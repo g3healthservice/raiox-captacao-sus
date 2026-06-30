@@ -1,0 +1,95 @@
+name: atualizar-base-fns
+
+on:
+  workflow_dispatch:
+    inputs:
+      ufs:
+        description: "UFs (ALL para tudo, ou ex.: GO,DF para teste rápido)"
+        default: "ALL"
+      shards:
+        description: "Nº de lotes paralelos (só vale para ALL)"
+        default: "8"
+  schedule:
+    - cron: "0 8 1 * *"   # dia 1 de cada mês, 08:00 UTC (05:00 BRT)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atualizar
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Preparar estrutura esperada pelos scripts
+        run: |
+          mkdir -p ~/raiox/fontes ~/raiox/cache ~/raiox/vendor ~/Downloads
+          cp pipeline/batch_propostas.py pipeline/merge_crossref.py pipeline/gerar_dashboard_propostas.py ~/raiox/
+          cp pipeline/fontes/* ~/raiox/fontes/
+          cp pipeline/vendor/* ~/raiox/vendor/
+          cp pipeline/ibge_municipios.json ~/raiox/cache/
+          cp pipeline/multianos.json ~/raiox/cache/multianos.json
+          cp pipeline/multianos.json /tmp/multianos.json
+
+      - name: Rodar pipeline (propostas -> merge -> dashboard)
+        run: |
+          UFS="${{ github.event.inputs.ufs || 'ALL' }}"
+          N="${{ github.event.inputs.shards || '8' }}"
+          cd ~/raiox
+          echo "UFs=$UFS  shards=$N"
+          if [ "$UFS" = "ALL" ]; then
+            for i in $(seq 0 $((N-1))); do
+              python3 batch_propostas.py ALL /tmp/prop_part_$i.json $i/$N > /tmp/log_$i.txt 2>&1 &
+            done
+            wait
+          else
+            python3 batch_propostas.py "$UFS" /tmp/prop_part_0.json > /tmp/log_0.txt 2>&1
+          fi
+          echo "--- resumo dos lotes ---"; grep -h "municípios alvo\|OK ->" /tmp/log_*.txt || true
+          python3 merge_crossref.py
+          python3 gerar_dashboard_propostas.py
+
+      - name: Montar site (app.html + build.txt + cópia portátil)
+        run: |
+          python3 - << 'PY'
+          import re, shutil
+          from pathlib import Path
+          repo = Path.cwd()
+          dash = Path.home()/"Downloads/dashboard_propostas_mac_pap.html"
+          html = dash.read_text(encoding="utf-8")
+          if 'name="robots"' not in html:
+              html = html.replace('<meta name="viewport"','<meta name="robots" content="noindex,nofollow">\n<meta name="viewport"',1)
+          build = re.search(r'"build":"([^"]+)"', html).group(1)
+          (repo/"app.html").write_text(html, encoding="utf-8")
+          (repo/"build.txt").write_text(build, encoding="utf-8")
+          # cópia portátil versionada no repo (opcional p/ download)
+          (repo/"RaioX_Captacao_SUS_G3.html").write_text(html, encoding="utf-8")
+          print("build:", build)
+          PY
+
+      - name: Commit e push (somente base completa ALL)
+        run: |
+          UFS="${{ github.event.inputs.ufs || 'ALL' }}"
+          if [ "$UFS" != "ALL" ]; then
+            echo "Execução de teste (UFs=$UFS) — NÃO publica para não sobrescrever a base completa."
+            exit 0
+          fi
+          git config user.name "raiox-bot"
+          git config user.email "actions@github.com"
+          git add app.html build.txt RaioX_Captacao_SUS_G3.html
+          if git diff --cached --quiet; then
+            echo "Nada mudou nesta execução."
+          else
+            git commit -m "Atualização automática da base FNS — $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+            echo "Publicado."
+          fi
