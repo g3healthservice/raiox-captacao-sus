@@ -371,7 +371,7 @@ function openDetail(m){
       <h3>Propostas individuais de custeio — ${ANO}</h3>
       ${props.length? propTable(props):'<div style="color:#aab4bf;padding:10px">Sem propostas individuais de custeio capturadas para '+ANO+'. Consulte a situação atualizada no Consulta FNS.</div>'}
     </div>
-    <div class="foot">G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · gerson.gomes@proton.me · +55 61 99255-7690 — Fonte oficial: consultafns.saude.gov.br</div>
+    <div class="foot">G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · g3.healthservice@proton.me · +55 61 99255-7690 — Fonte oficial: consultafns.saude.gov.br</div>
   `;
   drawCharts(m);
 }
@@ -466,7 +466,7 @@ function pdf(){
   const pages=doc.internal.getNumberOfPages();
   for(let i=1;i<=pages;i++){ doc.setPage(i); const ph=doc.internal.pageSize.getHeight();
     doc.setFontSize(7.5); doc.setTextColor(140);
-    doc.text('G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · gerson.gomes@proton.me · +55 61 99255-7690', M, ph-22);
+    doc.text('G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · g3.healthservice@proton.me · +55 61 99255-7690', M, ph-22);
     doc.text('Fonte: Consulta FNS + Portal FNS · valores em R$ · estimativa conservadora · pág. '+i+'/'+pages, M, ph-12); }
   const fname='Diagnostico_'+m.mun.replace(/ /g,'_')+'_'+m.uf+'.pdf';
   const blob=doc.output('blob'); const file=new File([blob],fname,{type:'application/pdf'});
@@ -630,7 +630,7 @@ function propostaPDF(){
   </style></head><body>
   <div class="top">
     <div class="brand">G3 HEALTH SERVICE<small>Assessoria em captação de recursos federais do SUS</small></div>
-    <div class="meta">CNPJ 31.652.744/0001-14<br>gerson.gomes@proton.me<br>+55 61 99255-7690<br>${hoje}</div>
+    <div class="meta">CNPJ 31.652.744/0001-14<br>g3.healthservice@proton.me<br>+55 61 99255-7690<br>${hoje}</div>
   </div>
 
   <h1>PROPOSTA DE TRABALHO</h1>
@@ -693,7 +693,7 @@ function propostaPDF(){
     </div>
   </div>
 
-  <div class="foot">G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · gerson.gomes@proton.me · +55 61 99255-7690 — Proposta gerada em ${hoje}. Estimativas de recuperabilidade conservadoras, confirmadas na análise detalhada.</div>
+  <div class="foot">G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · g3.healthservice@proton.me · +55 61 99255-7690 — Proposta gerada em ${hoje}. Estimativas de recuperabilidade conservadoras, confirmadas na análise detalhada.</div>
   </body></html>`;
   const w=window.open('','_blank','width=900,height=760');w.document.write(html);w.document.close();setTimeout(()=>w.print(),400);
 }

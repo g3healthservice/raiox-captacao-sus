@@ -102,5 +102,5 @@ O contrato/êxito se sustenta em três entregas concretas:
 
 ---
 
-*G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · gerson.gomes@proton.me · +55 61 99255-7690*
+*G3 Health Service Ltda · CNPJ 31.652.744/0001-14 · g3.healthservice@proton.me · +55 61 99255-7690*
 *Fontes: Consulta FNS (consultafns.saude.gov.br) · Portal FNS · IBGE. Valores oficiais; estimativas de recuperabilidade são conservadoras e ajustáveis por caso.*
