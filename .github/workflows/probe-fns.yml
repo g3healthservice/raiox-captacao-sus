@@ -1,0 +1,21 @@
+name: probe-fns
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Testar Consulta FNS (proposta API)
+        run: |
+          echo "== Consulta FNS (recursos/proposta) =="
+          URL="https://consultafns.saude.gov.br/recursos/proposta/consultar?ano=2026&coMunicipioIbge=520870&page=1&count=5"
+          code=$(curl -sk -o /tmp/p.json -w "%{http_code}" --max-time 45 \
+            -H "Accept: application/json" -H "Referer: https://consultafns.saude.gov.br/" \
+            -H "User-Agent: Mozilla/5.0" "$URL" || echo CURLFAIL)
+          echo "HTTP=$code  bytes=$(wc -c < /tmp/p.json 2>/dev/null || echo 0)"
+          echo "--- corpo (350) ---"; head -c 350 /tmp/p.json; echo
+      - name: Testar Portal FNS (download FAF)
+        run: |
+          echo "== Portal FNS (downloads) =="
+          code=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 45 -I "https://portalfns.saude.gov.br/" || echo CURLFAIL)
+          echo "portalfns HTTP=$code"
