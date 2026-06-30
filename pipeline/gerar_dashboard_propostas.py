@@ -703,7 +703,7 @@ renderOverview();
 
 # ---- methodology markdown -> simple HTML ----
 import re
-md = Path("/Users/gersongomes/raiox/METODOLOGIA_ASSESSORIA.md").read_text()
+md = (Path.home() / "raiox/METODOLOGIA_ASSESSORIA.md").read_text(encoding="utf-8")
 
 def md_to_html(md):
     lines = md.split("\n")

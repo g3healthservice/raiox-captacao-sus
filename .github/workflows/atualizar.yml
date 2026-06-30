@@ -34,6 +34,7 @@ jobs:
         run: |
           mkdir -p ~/raiox/fontes ~/raiox/cache ~/raiox/vendor ~/Downloads
           cp pipeline/batch_propostas.py pipeline/merge_crossref.py pipeline/gerar_dashboard_propostas.py ~/raiox/
+          cp pipeline/METODOLOGIA_ASSESSORIA.md ~/raiox/
           cp pipeline/fontes/* ~/raiox/fontes/
           cp pipeline/vendor/* ~/raiox/vendor/
           cp pipeline/ibge_municipios.json ~/raiox/cache/
