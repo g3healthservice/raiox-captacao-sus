@@ -374,6 +374,29 @@ function statusColor(s){s=(s||'').toLowerCase();
   if(s.includes('anális')||s.includes('analis'))return['#fdebd0','#ca6f1e'];
   if(s.includes('prospec'))return['#eae5f3','#7d3c98'];
   return['#eef1f5','#5f6b78'];}
+const CTRL_ADDF='padding:7px 9px;border:1px solid #c3ccd6;border-radius:6px;font-size:12px;width:100%;background:#fff';
+function ctrlSetIbge(){
+  const lbl=document.getElementById('addMun').value.trim();
+  const m=D.muns.find(x=>(x.mun+'/'+x.uf)===lbl);
+  document.getElementById('addIbge').value=m?m.ibge:'';
+}
+function _csvCell(x){x=String(x||'');return /[",;\n]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x;}
+function ctrlCopiarLinha(){
+  const lbl=document.getElementById('addMun').value.trim();
+  const ibge=document.getElementById('addIbge').value.trim();
+  const msg=document.getElementById('addMsg');
+  if(!ibge){msg.style.color='#c0392b';msg.textContent='Selecione um município válido da lista.';return;}
+  const [nome,uf]=lbl.split('/');
+  const row=[ibge,nome,uf,
+    document.getElementById('addResp').value.trim(),
+    document.getElementById('addStat').value.trim(),
+    document.getElementById('addData').value.trim(),
+    '15','5',
+    document.getElementById('addObs').value.trim()].map(_csvCell).join(',');
+  const done=()=>{msg.style.color='#1e8449';msg.textContent='✔ Linha copiada! Abra a planilha e cole (Cmd/Ctrl+V) numa linha nova.';};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(row).then(done).catch(()=>{prompt('Copie a linha e cole na planilha:',row);});}
+  else{prompt('Copie a linha e cole na planilha:',row);}
+}
 function renderCtrl(){
   const entries=Object.entries(CTRL);
   const byMun=new Map(D.muns.map(m=>[String(m.ibge),m]));
@@ -386,11 +409,30 @@ function renderCtrl(){
       <div class="toolbar" style="margin:0">
         <select id="ctrlResp"><option value="">Todos responsáveis</option>${resps.map(r=>'<option>'+r+'</option>').join('')}</select>
         <select id="ctrlStat"><option value="">Todos status</option>${stats.map(s=>'<option>'+s+'</option>').join('')}</select>
-        <a class="btn btn-live" href="${CTRL_EDIT_URL}" target="_blank" style="text-decoration:none">✏️ Editar planilha</a>
         <button class="btn btn-x" onclick="loadCtrl().then(renderCtrl)">↻ Atualizar</button>
       </div>
     </div>
-    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Início</th><th class="num">Nº único (custeio)</th><th class="num">Recuperável</th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
+    <div class="panel" style="margin-bottom:12px">
+      <h3 style="color:#0e3d59;margin-bottom:8px">➕ Adicionar / atualizar município</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Município (selecione)</div><input id="addMun" list="muniList" placeholder="Digite e selecione..." oninput="ctrlSetIbge()" style="${CTRL_ADDF}"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">IBGE (automático)</div><input id="addIbge" readonly placeholder="—" style="${CTRL_ADDF};background:#eef1f5;font-weight:700;color:#0e3d59"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Responsável</div><input id="addResp" list="respList" placeholder="Gerson / Chicao / Fernando" style="${CTRL_ADDF}"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Status</div><input id="addStat" list="statList" placeholder="Em análise..." style="${CTRL_ADDF}"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Início</div><input id="addData" type="date" style="${CTRL_ADDF}"></div>
+        <div style="grid-column:1/-1"><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Observações / andamento</div><input id="addObs" placeholder="O que foi feito, próximos passos..." style="${CTRL_ADDF}"></div>
+      </div>
+      <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-x" onclick="ctrlCopiarLinha()">📋 Copiar linha p/ planilha</button>
+        <a class="btn btn-live" href="${CTRL_EDIT_URL}" target="_blank" style="text-decoration:none">✏️ Abrir planilha</a>
+        <span id="addMsg" style="font-size:11px"></span>
+      </div>
+      <div style="font-size:10.5px;color:#8a97a5;margin-top:6px">Selecione o município → o <b>IBGE preenche sozinho</b>. Clique "Copiar linha", abra a planilha e cole numa linha nova. Depois clique ↻ Atualizar.</div>
+    </div>
+    <datalist id="muniList">${D.muns.map(m=>'<option value="'+m.mun+'/'+m.uf+'">').join('')}</datalist>
+    <datalist id="respList"><option value="Gerson Gomes"><option value="Chicao"><option value="Fernando Mota"></datalist>
+    <datalist id="statList"><option value="Prospecção"><option value="Em análise"><option value="Em processo"><option value="Contratado"><option value="Concluído"></datalist>
+    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Início</th><th>Observações</th><th class="num">Nº único (custeio)</th><th class="num">Recuperável</th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
   const draw=()=>{
     const fr=document.getElementById('ctrlResp').value, fs=document.getElementById('ctrlStat').value, a=yr();
     const tb=document.getElementById('ctrlRows');tb.innerHTML='';
@@ -400,16 +442,18 @@ function renderCtrl(){
       .forEach(({k,v,m})=>{
         const sc=statusColor(v.status);
         const nu=m?numUnico(m,a):0, rc=m?recuperavel(comps(m,a)):0;
+        const obs=v.observacoes||'';
         const tr=document.createElement('tr');tr.className='mrow';if(m)tr.onclick=()=>openDetail(m);
         tr.innerHTML=`<td><b>${v.mun||(m?m.mun:k)}</b> <span style="color:#aab4bf">${m?m.uf:''}</span></td>
           <td>${v.responsavel||'—'}</td>
           <td><span class="pill" style="background:${sc[0]};color:${sc[1]}">${v.status||'—'}</span></td>
           <td style="color:#5f6b78">${v.data_inicio||'—'}</td>
+          <td style="color:#5f6b78;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${obs.replace(/"/g,'&quot;')}">${obs||'—'}</td>
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
           <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>`;
         tb.appendChild(tr);
       });
-    if(!tb.children.length)tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
+    if(!tb.children.length)tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
   };
   document.getElementById('ctrlResp').onchange=draw;document.getElementById('ctrlStat').onchange=draw;draw();
 }
