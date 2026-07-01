@@ -381,6 +381,7 @@ function statusColor(s){s=(s||'').toLowerCase();
   return['#eef1f5','#5f6b78'];}
 const CTRL_ADDF='padding:7px 9px;border:1px solid #c3ccd6;border-radius:6px;font-size:12px;width:100%;background:#fff';
 function _hoje(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function fmtDataBR(d){d=String(d||'').trim();if(!d)return '';const m=d.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?(m[3]+'/'+m[2]+'/'+m[1]):d;}
 function ctrlSetIbge(){
   const lbl=document.getElementById('addMun').value.trim();
   const m=D.muns.find(x=>(x.mun+'/'+x.uf)===lbl);
@@ -498,7 +499,7 @@ function renderCtrl(){
         tr.innerHTML=`<td><b>${v.mun||(m?m.mun:k)}</b> <span style="color:#aab4bf">${m?m.uf:''}</span></td>
           <td>${v.responsavel||'—'}</td>
           <td><span class="pill" style="background:${sc[0]};color:${sc[1]}">${v.status||'—'}</span></td>
-          <td style="color:#5f6b78">${v.data_inicio||'—'}</td>
+          <td style="color:#5f6b78">${v.data_inicio?fmtDataBR(v.data_inicio):'—'}</td>
           <td style="color:#5f6b78;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${obs.replace(/"/g,'&quot;')}">${obs||'—'}</td>
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
           <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>
@@ -519,7 +520,7 @@ function ctrlPanel(m){
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:12px">
       <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Responsável</div><b>${c.responsavel||'—'}</b></div>
       <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Status</div><span class="pill" style="background:${sc[0]};color:${sc[1]}">${c.status||'—'}</span></div>
-      <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Início da assessoria</div><b>${c.data_inicio||'—'}</b></div>
+      <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Criado em</div><b>${c.data_inicio?fmtDataBR(c.data_inicio):'—'}</b></div>
       <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Consultoria</div><b>${c.pct_equipe||'?'}% equipe · ${c.pct_g3||'?'}% G3</b></div>
       ${c.valor?`<div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Valor programas</div><b>${c.valor}</b></div>`:''}
     </div>
