@@ -5,6 +5,9 @@ from datetime import datetime
 from pathlib import Path
 
 BUILD = datetime.now().strftime("%Y-%m-%d %H:%M")
+# URL /exec do Apps Script da controladoria (grava direto na planilha). Vazio = usa só copiar/colar.
+_savef = Path.home() / "raiox/ctrl_save_url.txt"
+CTRL_SAVE_URL_VALUE = _savef.read_text().strip() if _savef.exists() else ""
 
 _ds = Path("/tmp/propostas_dataset.json")
 if not _ds.exists():
@@ -328,6 +331,8 @@ function tab(v){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle(
 /* ===== CONTROLADORIA (lê planilha Google publicada) ===== */
 const CTRL_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vTMcZpgiHbci8FynfSaQ4wojiPxplxmSKbzhrwoAz1kE9L6bXiaUyWWAZ16vtq9ZBBObHd0xGTdaf6w/pub?output=csv';
 const CTRL_EDIT_URL='https://docs.google.com/spreadsheets/d/1MKxBhNTLL6mvKhrQDxAnrxOo7a5H5ACyYtEK8cXSnxo/edit';
+const CTRL_SAVE_URL='__CTRL_SAVE_URL__';  // URL /exec do Apps Script (grava direto na planilha)
+const CTRL_TOKEN='g3ctrl2026';
 const CTRL_PW='g3saude';
 let CTRL={}, ctrlLoaded=false, ctrlUnlocked=false;
 function parseCSV(t){
@@ -397,6 +402,28 @@ function ctrlCopiarLinha(){
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(row).then(done).catch(()=>{prompt('Copie a linha e cole na planilha:',row);});}
   else{prompt('Copie a linha e cole na planilha:',row);}
 }
+function ctrlSalvar(){
+  const msg=document.getElementById('addMsg');
+  const ibge=document.getElementById('addIbge').value.trim();
+  if(!ibge){msg.style.color='#c0392b';msg.textContent='Selecione um município válido da lista.';return;}
+  if(!CTRL_SAVE_URL){msg.style.color='#ca6f1e';msg.textContent='Salvamento direto ainda não configurado — use "Copiar linha".';return;}
+  const [nome,uf]=document.getElementById('addMun').value.split('/');
+  const payload={token:CTRL_TOKEN,ibge:ibge,municipio:nome,uf:uf,
+    responsavel:document.getElementById('addResp').value.trim(),
+    status:document.getElementById('addStat').value.trim(),
+    data_inicio:document.getElementById('addData').value.trim(),
+    pct_equipe:'15',pct_g3:'5',
+    observacoes:document.getElementById('addObs').value.trim()};
+  msg.style.color='#8a97a5';msg.textContent='Salvando na planilha...';
+  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
+    .then(()=>new Promise(r=>setTimeout(r,2400)))
+    .then(()=>loadCtrl())
+    .then(()=>{
+      if(CTRL[ibge]){msg.style.color='#1e8449';msg.textContent='✔ Salvo na planilha!';setTimeout(renderCtrl,1300);}
+      else{msg.style.color='#ca6f1e';msg.textContent='Enviado. Se não apareceu, clique ↻ Atualizar ou confira o Apps Script.';}
+    })
+    .catch(()=>{msg.style.color='#c0392b';msg.textContent='Falha ao salvar — use "Copiar linha" como alternativa.';});
+}
 function renderCtrl(){
   const entries=Object.entries(CTRL);
   const byMun=new Map(D.muns.map(m=>[String(m.ibge),m]));
@@ -423,6 +450,7 @@ function renderCtrl(){
         <div style="grid-column:1/-1"><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Observações / andamento</div><input id="addObs" placeholder="O que foi feito, próximos passos..." style="${CTRL_ADDF}"></div>
       </div>
       <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        ${CTRL_SAVE_URL?'<button class="btn btn-live" style="background:#1e8449" onclick="ctrlSalvar()">💾 Salvar na planilha</button>':''}
         <button class="btn btn-x" onclick="ctrlCopiarLinha()">📋 Copiar linha p/ planilha</button>
         <a class="btn btn-live" href="${CTRL_EDIT_URL}" target="_blank" style="text-decoration:none">✏️ Abrir planilha</a>
         <span id="addMsg" style="font-size:11px"></span>
@@ -942,6 +970,7 @@ jspdf = (Path.home() / "raiox/vendor/jspdf.umd.min.js").read_text().replace("</s
 autotable = (Path.home() / "raiox/vendor/jspdf.autotable.min.js").read_text().replace("</script", "<\\/script")
 out = HTML.replace("__CHARTJS__", "<script>\n" + chartjs + "\n</script>")
 out = out.replace("__JSPDF__", "<script>\n" + jspdf + "\n</script>\n<script>\n" + autotable + "\n</script>")
+out = out.replace("__CTRL_SAVE_URL__", CTRL_SAVE_URL_VALUE)
 out = out.replace("__DATA__", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 out = out.replace("__METHOD__", method_html)
 outpath = Path.home() / "Downloads/dashboard_propostas_mac_pap.html"
