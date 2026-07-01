@@ -424,6 +424,15 @@ function ctrlSalvar(){
     })
     .catch(()=>{msg.style.color='#c0392b';msg.textContent='Falha ao salvar — use "Copiar linha" como alternativa.';});
 }
+function ctrlRemover(ibge,mun){
+  if(!CTRL_SAVE_URL){alert('Gravação direta não configurada.');return;}
+  if(!confirm('Remover "'+mun+'" da controladoria?\n(apaga a linha na planilha — não afeta os dados do FNS)'))return;
+  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:CTRL_TOKEN,action:'delete',ibge:ibge})})
+    .then(()=>new Promise(r=>setTimeout(r,2400)))
+    .then(()=>loadCtrl())
+    .then(()=>renderCtrl())
+    .catch(()=>alert('Falha ao remover. Tente de novo ou edite a planilha.'));
+}
 function renderCtrl(){
   const entries=Object.entries(CTRL);
   const byMun=new Map(D.muns.map(m=>[String(m.ibge),m]));
@@ -460,7 +469,7 @@ function renderCtrl(){
     <datalist id="muniList">${D.muns.map(m=>'<option value="'+m.mun+'/'+m.uf+'">').join('')}</datalist>
     <datalist id="respList"><option value="Gerson Gomes"><option value="Chicao"><option value="Fernando Mota"></datalist>
     <datalist id="statList"><option value="Prospecção"><option value="Em análise"><option value="Em processo"><option value="Contratado"><option value="Concluído"></datalist>
-    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Início</th><th>Observações</th><th class="num">Nº único (custeio)</th><th class="num">Recuperável</th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
+    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Início</th><th>Observações</th><th class="num">Nº único (custeio)</th><th class="num">Recuperável</th><th></th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
   const draw=()=>{
     const fr=document.getElementById('ctrlResp').value, fs=document.getElementById('ctrlStat').value, a=yr();
     const tb=document.getElementById('ctrlRows');tb.innerHTML='';
@@ -478,10 +487,11 @@ function renderCtrl(){
           <td style="color:#5f6b78">${v.data_inicio||'—'}</td>
           <td style="color:#5f6b78;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${obs.replace(/"/g,'&quot;')}">${obs||'—'}</td>
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
-          <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>`;
+          <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>
+          <td style="text-align:center"><button title="Remover da controladoria" onclick="event.stopPropagation();ctrlRemover('${k}','${(v.mun||(m?m.mun:k)).replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.6">🗑️</button></td>`;
         tb.appendChild(tr);
       });
-    if(!tb.children.length)tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
+    if(!tb.children.length)tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
   };
   document.getElementById('ctrlResp').onchange=draw;document.getElementById('ctrlStat').onchange=draw;draw();
 }
