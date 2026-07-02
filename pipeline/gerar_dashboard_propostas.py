@@ -346,7 +346,7 @@ function parseCSV(t){
   return rows;
 }
 function loadCtrl(){
-  return fetch(CTRL_URL,{cache:'no-store'}).then(r=>r.text()).then(txt=>{
+  return fetch(CTRL_URL+'&_cb='+Date.now(),{cache:'no-store'}).then(r=>r.text()).then(txt=>{
     const rows=parseCSV(txt).filter(r=>r.length>1&&r.join('').trim());
     const hdr=rows.shift().map(h=>h.trim().toLowerCase());
     const idx=n=>hdr.findIndex(h=>h.startsWith(n));
@@ -430,15 +430,28 @@ function ctrlSalvar(){
     data_inicio:document.getElementById('addData').value.trim(),
     pct_equipe:'15',pct_g3:'5',
     observacoes:document.getElementById('addObs').value.trim()};
-  msg.style.color='#8a97a5';msg.textContent='Salvando na planilha...';
-  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)})
-    .then(()=>new Promise(r=>setTimeout(r,2400)))
-    .then(()=>loadCtrl())
-    .then(()=>{
-      if(CTRL[ibge]){msg.style.color='#1e8449';msg.textContent='✔ Salvo na planilha!';setTimeout(renderCtrl,1300);}
-      else{msg.style.color='#ca6f1e';msg.textContent='Enviado. Se não apareceu, clique ↻ Atualizar ou confira o Apps Script.';}
-    })
-    .catch(()=>{msg.style.color='#c0392b';msg.textContent='Falha ao salvar — use "Copiar linha" como alternativa.';});
+  // envia (fire-and-forget; Apps Script grava na planilha)
+  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});
+  // ATUALIZA A TABELA NA HORA (otimista) — não depende do cache do CSV publicado
+  const prev=CTRL[ibge]||{};
+  CTRL[ibge]={responsavel:payload.responsavel,status:payload.status,data_inicio:payload.data_inicio,
+    pct_equipe:'15',pct_g3:'5',valor:prev.valor||'',observacoes:payload.observacoes,mun:nome};
+  renderCtrl();
+  const m2=document.getElementById('addMsg');
+  if(m2){m2.style.color='#1e8449';m2.textContent='✔ Salvo na planilha e atualizado na lista!';}
+}
+function ctrlEditar(ibge){
+  const c=CTRL[ibge];if(!c)return;
+  const m=D.muns.find(x=>String(x.ibge)===String(ibge));
+  const $=id=>document.getElementById(id);
+  $('addMun').value=m?(m.mun+'/'+m.uf):(c.mun||'');
+  $('addIbge').value=ibge;
+  $('addResp').value=c.responsavel||'';
+  $('addStat').value=c.status||'';
+  $('addData').value=(c.data_inicio||'').slice(0,10);
+  $('addObs').value=c.observacoes||'';
+  const msg=$('addMsg');if(msg){msg.style.color='#2471a3';msg.textContent='✏️ Editando '+(c.mun||m&&m.mun||'')+' — altere e clique 💾 Salvar.';}
+  const box=document.querySelector('#ctrlBody .panel');if(box)box.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function ctrlRemover(ibge,mun){
   if(!CTRL_SAVE_URL){alert('Gravação direta não configurada.');return;}
@@ -503,7 +516,7 @@ function renderCtrl(){
           <td style="color:#5f6b78;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${obs.replace(/"/g,'&quot;')}">${obs||'—'}</td>
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
           <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>
-          <td style="text-align:center"><button title="Remover da controladoria" onclick="event.stopPropagation();ctrlRemover('${k}','${(v.mun||(m?m.mun:k)).replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.6">🗑️</button></td>`;
+          <td style="text-align:center;white-space:nowrap"><button title="Editar este lead" onclick="event.stopPropagation();ctrlEditar('${k}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.65;margin-right:2px">✏️</button><button title="Remover da controladoria" onclick="event.stopPropagation();ctrlRemover('${k}','${(v.mun||(m?m.mun:k)).replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.6">🗑️</button></td>`;
         tb.appendChild(tr);
       });
     if(!tb.children.length)tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
