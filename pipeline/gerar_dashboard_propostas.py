@@ -891,8 +891,8 @@ function propostaPDF(){
   const popMun = cur ? (cur.pop||0) : 0;
   const inv = investimento(popMun);
   const investHTML = popMun
-    ? `Para o porte deste município (<b>${popMun.toLocaleString('pt-BR')} habitantes</b> · faixa ${faixaPop(popMun)}), o honorário fixo mensal de referência é de <b>${fmt(inv)}/mês</b>, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b>`
-    : `O honorário fixo mensal varia conforme o porte do município, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b> Selecione o município na aba Detalhe para gravar o valor exato.`;
+    ? `Para o porte deste município (<b>${popMun.toLocaleString('pt-BR')} habitantes</b> · faixa ${faixaPop(popMun)}), o honorário fixo mensal de referência é de <b>${fmt(inv)}/mês</b>, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b> <b>Período de 12 meses de vigência.</b>`
+    : `O honorário fixo mensal varia conforme o porte do município, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b> <b>Período de 12 meses de vigência.</b> Selecione o município na aba Detalhe para gravar o valor exato.`;
   // diagnóstico preliminar com números reais se houver município selecionado
   let diagBlock='';
   if(cur){
