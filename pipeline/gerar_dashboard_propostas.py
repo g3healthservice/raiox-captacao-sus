@@ -244,29 +244,17 @@ function recuperavel(c){return c.gap*0.6 + c.desc*0.5;}
 // honorário fixo mensal por porte (habitantes) — tabela G3
 function investimento(pop){
   pop=pop||0;
-  if(pop<=10000) return 2500;
-  if(pop<=20000) return 3500;
-  if(pop<=30000) return 5000;
-  if(pop<=40000) return 6500;
-  if(pop<=50000) return 8000;
-  if(pop<=100000) return 10000;
-  if(pop<=200000) return 12000;
-  if(pop<=400000) return 15000;
-  if(pop<=500000) return 20000;
-  return 25000;
+  if(pop<=50000) return 3000;
+  if(pop<=100000) return 4500;
+  if(pop<=200000) return 6000;
+  return 8000;
 }
 function faixaPop(pop){
   pop=pop||0;
-  if(pop<=10000) return 'até 10.000 hab';
-  if(pop<=20000) return '10.001–20.000 hab';
-  if(pop<=30000) return '20.001–30.000 hab';
-  if(pop<=40000) return '30.001–40.000 hab';
-  if(pop<=50000) return '40.001–50.000 hab';
+  if(pop<=50000) return 'até 50.000 hab';
   if(pop<=100000) return '50.001–100.000 hab';
   if(pop<=200000) return '100.001–200.000 hab';
-  if(pop<=400000) return '200.001–400.000 hab';
-  if(pop<=500000) return '400.001–500.000 hab';
-  return 'acima de 500.000 hab';
+  return 'acima de 200.000 hab';
 }
 function perCap(m,a){const p=m.pop||0;return p>0?numUnico(m,a)/p:0;}
 const fmtHab = v => v>0?('R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0})):'—';
