@@ -951,7 +951,7 @@ function propostaPDF(){
 
   <h1>PROPOSTA DE TRABALHO</h1>
   <div class="sub">Assessoria para recuperação de recursos de custeio MAC e PAP não captados</div>
-  <div class="to"><b>À ${munNome}</b><br>Secretaria Municipal de Saúde / Fundo Municipal de Saúde<br>${secLine}Ref.: Diagnóstico e recuperação de repasses federais do SUS</div>
+  <div class="to"><b>À ${munNome}</b><br>${isEstado?'Secretaria Estadual de Saúde / Fundo Estadual de Saúde':'Secretaria Municipal de Saúde / Fundo Municipal de Saúde'}<br>${secLine}Ref.: Diagnóstico e recuperação de repasses federais do SUS</div>
 
   <h2>1. Apresentação</h2>
   <p>A <b>G3 Health Service</b> é especializada em identificar e recuperar recursos federais do SUS que deixam de ser captados pelos municípios — especialmente no custeio da <b>Média e Alta Complexidade (MAC)</b> e da <b>Atenção Primária (PAP)</b>. Trabalhamos exclusivamente com <b>dados oficiais</b> do Ministério da Saúde, de forma auditável.</p>
@@ -1005,7 +1005,7 @@ function propostaPDF(){
     </div>
     <div class="col">
       <div class="line">${inSec||'&nbsp;'}</div>
-      <div class="role">Responsável — Secretaria Municipal de Saúde / Fundo Municipal de Saúde${(munNome&&munNome!=='[Município / UF]')?' · '+munNome:''} (Contratante)</div>
+      <div class="role">Responsável — ${isEstado?'Secretaria Estadual de Saúde / Fundo Estadual de Saúde':'Secretaria Municipal de Saúde / Fundo Municipal de Saúde'}${(munNome&&munNome!=='[Município / UF]')?' · '+munNome:''} (Contratante)</div>
     </div>
   </div>
 
