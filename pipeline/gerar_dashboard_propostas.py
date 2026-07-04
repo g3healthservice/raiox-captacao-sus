@@ -366,13 +366,13 @@ function loadCtrl(){
     const rows=parseCSV(txt).filter(r=>r.length>1&&r.join('').trim());
     const hdr=rows.shift().map(h=>h.trim().toLowerCase());
     const idx=n=>hdr.findIndex(h=>h.startsWith(n));
-    const iI=idx('ibge'),iR=idx('responsavel'),iS=idx('status'),iD=idx('data_inicio'),iPe=idx('pct_equipe'),iPg=idx('pct_g3'),iV=idx('valor'),iO=idx('observ'),iM=idx('municipio');
+    const iI=idx('ibge'),iR=idx('responsavel'),iS=idx('status'),iD=idx('data_inicio'),iPe=idx('pct_equipe'),iPg=idx('pct_g3'),iV=idx('valor'),iO=idx('observ'),iM=idx('municipio'),iA=idx('anexo');
     CTRL={};
     rows.forEach(r=>{
       const ibge=(r[iI]||'').trim().slice(0,6);
       if(!ibge)return;
       CTRL[ibge]={responsavel:(r[iR]||'').trim(),status:(r[iS]||'').trim(),data_inicio:(r[iD]||'').trim(),
-        pct_equipe:(r[iPe]||'').trim(),pct_g3:(r[iPg]||'').trim(),valor:iV>=0?(r[iV]||'').trim():'',observacoes:iO>=0?(r[iO]||'').trim():'',mun:(r[iM]||'').trim()};
+        pct_equipe:(r[iPe]||'').trim(),pct_g3:(r[iPg]||'').trim(),valor:iV>=0?(r[iV]||'').trim():'',observacoes:iO>=0?(r[iO]||'').trim():'',mun:(r[iM]||'').trim(),anexos:iA>=0?(r[iA]||'').trim():''};
     });
     _pendAplicar();  // sobrepõe gravações recentes ainda não refletidas no CSV
     ctrlLoaded=true;
@@ -462,11 +462,23 @@ function ctrlSalvar(){
   // ATUALIZA A TABELA NA HORA (otimista) — não depende do cache do CSV publicado
   const prev=CTRL[ibge]||{};
   CTRL[ibge]={responsavel:payload.responsavel,status:payload.status,data_inicio:payload.data_inicio,
-    pct_equipe:'15',pct_g3:'5',valor:prev.valor||'',observacoes:payload.observacoes,mun:nome};
+    pct_equipe:'15',pct_g3:'5',valor:prev.valor||'',observacoes:payload.observacoes,mun:nome,anexos:prev.anexos||''};
   _pendMarcar(ibge,CTRL[ibge]);  // sobrevive ao ↻ Atualizar enquanto o CSV não reflete
   renderCtrl();
   const m2=document.getElementById('addMsg');
   if(m2){m2.style.color='#1e8449';m2.textContent='✔ Salvo na planilha e atualizado na lista!';}
+}
+/* ---- Anexos: "nome::url|nome2::url2" <-> [{filename,url}] ---- */
+function _anexosParse(str){
+  return String(str||'').split('|').map(s=>s.trim()).filter(Boolean).map(s=>{
+    const i=s.indexOf('::');return i<0?{filename:s,url:'#'}:{filename:s.slice(0,i),url:s.slice(i+2)};
+  });
+}
+function _anexosStringify(arr){return arr.map(a=>a.filename+'::'+a.url).join('|');}
+function _anexosRenderList(str){
+  const arr=_anexosParse(str);
+  if(!arr.length)return '<span style="font-size:11px;color:#aab4bf">Nenhum anexo ainda.</span>';
+  return arr.map(a=>`<a href="${a.url}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#eef1f5;border-radius:6px;padding:4px 9px;font-size:11px;color:#2471a3;text-decoration:none">📎 ${a.filename}</a>`).join('');
 }
 function ctrlEditar(ibge){
   const c=CTRL[ibge];if(!c)return;
@@ -478,8 +490,47 @@ function ctrlEditar(ibge){
   $('addStat').value=c.status||'';
   $('addData').value=(c.data_inicio||'').slice(0,10);
   $('addObs').value=c.observacoes||'';
+  const al=$('addAnexosList');if(al)al.innerHTML=_anexosRenderList(c.anexos);
   const msg=$('addMsg');if(msg){msg.style.color='#2471a3';msg.textContent='✏️ Editando '+(c.mun||m&&m.mun||'')+' — altere e clique 💾 Salvar.';}
   const box=document.querySelector('#ctrlBody .panel');if(box)box.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function ctrlAnexarClick(){
+  const ibge=document.getElementById('addIbge').value.trim();
+  if(!ibge){alert('Selecione o município primeiro (o IBGE precisa estar preenchido).');return;}
+  document.getElementById('addAnexoInput').click();
+}
+async function ctrlAnexarUpload(fileList){
+  const ibge=document.getElementById('addIbge').value.trim();
+  const msg=document.getElementById('addMsg');
+  if(!ibge||!fileList||!fileList.length)return;
+  const files=[...fileList];
+  const MAXB=8*1024*1024;
+  for(const f of files){
+    if(f.size>MAXB){alert('"'+f.name+'" tem mais de 8MB — não enviado. Reduza o tamanho e tente de novo.');continue;}
+    msg.style.color='#8a97a5';msg.textContent='Enviando anexo: '+f.name+'...';
+    try{
+      const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(f);});
+      const resp=await fetch(CTRL_SAVE_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({token:CTRL_TOKEN,action:'upload',ibge:ibge,filename:f.name,mimetype:f.type||'application/octet-stream',dataB64:b64})});
+      const j=await resp.json();
+      if(j&&j.ok&&j.url&&j.filename){
+        const prev=CTRL[ibge]||{};
+        const arr=_anexosParse(prev.anexos);arr.push({filename:j.filename,url:j.url});
+        const novo=_anexosStringify(arr);
+        CTRL[ibge]=Object.assign({},prev,{anexos:novo});
+        _pendMarcar(ibge,{anexos:novo});
+        const al=document.getElementById('addAnexosList');if(al)al.innerHTML=_anexosRenderList(novo);
+        msg.style.color='#1e8449';msg.textContent='✔ Anexo "'+f.name+'" salvo!';
+      } else {
+        msg.style.color='#c0392b';msg.textContent='Falha ao anexar "'+f.name+'": '+((j&&j.error)||'verifique se o Apps Script foi atualizado (v4)');
+      }
+    }catch(err){
+      msg.style.color='#c0392b';msg.textContent='Falha ao anexar "'+f.name+'". Verifique a conexão e tente de novo.';
+    }
+  }
+  // atualiza só a tabela — preserva o formulário em edição (não reseta município/campos)
+  if(window._ctrlDrawTable)window._ctrlDrawTable();
+  document.getElementById('addAnexoInput').value='';
 }
 function ctrlRemover(ibge,mun){
   if(!CTRL_SAVE_URL){alert('Gravação direta não configurada.');return;}
@@ -517,15 +568,21 @@ function renderCtrl(){
       <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         ${CTRL_SAVE_URL?'<button class="btn btn-live" style="background:#1e8449" onclick="ctrlSalvar()">💾 Salvar na planilha</button>':'<button class="btn btn-x" onclick="ctrlCopiarLinha()">📋 Copiar linha p/ planilha</button>'}
         <a class="btn btn-live" href="${CTRL_EDIT_URL}" target="_blank" style="text-decoration:none">✏️ Abrir planilha</a>
+        ${CTRL_SAVE_URL?'<button class="btn btn-x" onclick="ctrlAnexarClick()">📎 Anexar arquivo/foto</button>':''}
+        <input type="file" id="addAnexoInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" multiple style="display:none" onchange="ctrlAnexarUpload(this.files)">
         <span id="addMsg" style="font-size:11px"></span>
       </div>
-      <div style="font-size:10.5px;color:#8a97a5;margin-top:6px">Selecione o município → o <b>IBGE preenche sozinho</b>. Se já estiver na lista, os campos <b>carregam para edição</b>; se for novo, a <b>data de criação entra automática (hoje)</b>. Preencha/edite e clique <b>💾 Salvar</b>.</div>
+      <div id="addAnexosList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+      <div style="font-size:10.5px;color:#8a97a5;margin-top:6px">Selecione o município → o <b>IBGE preenche sozinho</b>. Se já estiver na lista, os campos <b>carregam para edição</b>; se for novo, a <b>data de criação entra automática (hoje)</b>. Preencha/edite e clique <b>💾 Salvar</b>. Anexos (fotos/documentos) ficam salvos no Drive e vinculados ao município — selecione-o antes de anexar.</div>
     </div>
     <datalist id="muniList">${D.muns.map(m=>'<option value="'+m.mun+'/'+m.uf+'">').join('')}</datalist>
     <datalist id="respList"><option value="Gerson Gomes"><option value="Chicao"><option value="Fernando Mota"><option value="Vicente"><option value="Rodolfo Pacheco"><option value="Mateus Costa"></datalist>
     <datalist id="statList"><option value="Prospecção"><option value="Em análise"><option value="Em processo"><option value="Contratado"><option value="Concluído"></datalist>
-    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Criado em</th><th>Observações</th><th class="num">Nº único (custeio)</th><th>Bloco</th><th class="num">Recuperável</th><th></th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
+    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Criado em</th><th>Observações</th><th class="num">Nº único (custeio)</th><th>Bloco</th><th class="num">Recuperável</th><th>📎</th><th></th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
   const draw=()=>{
+    // recomputa a cada chamada (CTRL pode ter mudado, ex.: após anexar um arquivo)
+    const entries=Object.entries(CTRL);
+    const byMun=new Map(D.muns.map(m=>[String(m.ibge),m]));
     const fr=document.getElementById('ctrlResp').value, fs=document.getElementById('ctrlStat').value, a=yr();
     const tb=document.getElementById('ctrlRows');tb.innerHTML='';
     entries.filter(([k,v])=>(!fr||v.responsavel===fr)&&(!fs||v.status===fs))
@@ -535,6 +592,7 @@ function renderCtrl(){
         const sc=statusColor(v.status);
         const nu=m?numUnico(m,a):0, rc=m?recuperavel(comps(m,a)):0;
         const obs=v.observacoes||'';
+        const nAnexos=_anexosParse(v.anexos).length;
         const tr=document.createElement('tr');tr.className='mrow';if(m)tr.onclick=()=>openDetail(m);
         tr.innerHTML=`<td><b>${v.mun||(m?m.mun:k)}</b> <span style="color:#aab4bf">${m?m.uf:''}</span></td>
           <td>${v.responsavel||'—'}</td>
@@ -544,12 +602,14 @@ function renderCtrl(){
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
           <td>${blocoPill(blocoLead(m,a))}</td>
           <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>
+          <td style="text-align:center"><button title="${nAnexos?nAnexos+' anexo(s) — clique para ver/editar':'Nenhum anexo — clique para adicionar'}" onclick="event.stopPropagation();ctrlEditar('${k}')" style="background:none;border:1px solid ${nAnexos?'#c3ccd6':'transparent'};border-radius:10px;cursor:pointer;font-size:11px;padding:2px 7px;color:${nAnexos?'#2471a3':'#c3ccd6'}">📎${nAnexos?' '+nAnexos:''}</button></td>
           <td style="text-align:center;white-space:nowrap"><button title="Editar este lead" onclick="event.stopPropagation();ctrlEditar('${k}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.65;margin-right:2px">✏️</button><button title="Remover da controladoria" onclick="event.stopPropagation();ctrlRemover('${k}','${(v.mun||(m?m.mun:k)).replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.6">🗑️</button></td>`;
         tb.appendChild(tr);
       });
-    if(!tb.children.length)tb.innerHTML='<tr><td colspan="9" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
+    if(!tb.children.length)tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
   };
   document.getElementById('ctrlResp').onchange=draw;document.getElementById('ctrlStat').onchange=draw;draw();
+  window._ctrlDrawTable=draw;  // permite atualizar só a tabela (sem resetar o formulário) após anexar arquivo
 }
 function ctrlPanel(m){
   if(!ctrlUnlocked)return '';
