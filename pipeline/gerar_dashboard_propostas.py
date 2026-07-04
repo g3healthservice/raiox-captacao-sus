@@ -207,6 +207,9 @@ table.gtbl tr.mrow:hover{background:#f0f7fb}
       <input id="propSec" placeholder="A/C Secretário(a) de Saúde (opcional)">
       <input id="propResp" placeholder="Responsável G3 (ex.: Gerson Gomes)">
     </div>
+    <label style="display:flex;align-items:center;gap:6px;margin-top:9px;font-size:12px;color:#3a4550;cursor:pointer">
+      <input type="checkbox" id="propEstado"> Proposta para Estado / Distrito Federal (honorário fixo R$ 15.000/mês, sem faixa por habitantes)
+    </label>
   </div>
   <div class="method">__METHOD__</div>
 </div>
@@ -875,10 +878,13 @@ function propostaPDF(){
   const resp=(document.getElementById('propResp').value||'').trim()||'Gerson Gomes';
   const munNome = inMun || (cur?(cur.mun+'/'+cur.uf):'[Município / UF]');
   const hoje=new Date().toLocaleDateString('pt-BR');
-  // investimento (honorário fixo mensal) conforme porte populacional
+  // investimento (honorário fixo mensal): Estado/DF = valor fixo; município = por porte populacional
+  const isEstado=document.getElementById('propEstado')&&document.getElementById('propEstado').checked;
   const popMun = cur ? (cur.pop||0) : 0;
-  const inv = investimento(popMun);
-  const investHTML = popMun
+  const inv = isEstado ? 15000 : investimento(popMun);
+  const investHTML = isEstado
+    ? `Para contratação em âmbito estadual (<b>Estado ou Distrito Federal</b>), o honorário fixo mensal de referência é de <b>${fmt(inv)}/mês</b>, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b> <b>Período de 12 meses de vigência.</b>`
+    : popMun
     ? `Para o porte deste município (<b>${popMun.toLocaleString('pt-BR')} habitantes</b> · faixa ${faixaPop(popMun)}), o honorário fixo mensal de referência é de <b>${fmt(inv)}/mês</b>, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b> <b>Período de 12 meses de vigência.</b>`
     : `O honorário fixo mensal varia conforme o porte do município, no modelo de <b>parte fixa pelo diagnóstico/plano + êxito sobre o recuperado — alinha o interesse e remove o risco percebido pelo gestor.</b> <b>Período de 12 meses de vigência.</b> Selecione o município na aba Detalhe para gravar o valor exato.`;
   // diagnóstico preliminar com números reais se houver município selecionado
