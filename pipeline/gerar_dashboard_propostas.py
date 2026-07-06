@@ -878,6 +878,7 @@ function propostaPDF(){
   const resp=(document.getElementById('propResp').value||'').trim()||'Gerson Gomes';
   const munNome = inMun || (cur?(cur.mun+'/'+cur.uf):'[Município / UF]');
   const hoje=new Date().toLocaleDateString('pt-BR');
+  const emissao=new Date().toLocaleDateString('pt-BR')+' às '+new Date().toLocaleTimeString('pt-BR');
   // investimento (honorário fixo mensal): Estado/DF = valor fixo; município = por porte populacional
   const isEstado=document.getElementById('propEstado')&&document.getElementById('propEstado').checked;
   const popMun = cur ? (cur.pop||0) : 0;
@@ -946,7 +947,7 @@ function propostaPDF(){
   </style></head><body>
   <div class="top">
     <div class="brand">G3 HEALTH SERVICE<small>Assessoria em captação de recursos federais do SUS</small></div>
-    <div class="meta">CNPJ 31.652.744/0001-14<br>g3.healthservice@proton.me<br>+55 61 99255-7690<br>${hoje}</div>
+    <div class="meta">CNPJ 31.652.744/0001-14<br>g3.healthservice@proton.me<br>+55 61 99255-7690<br>Emitida em ${emissao}</div>
   </div>
 
   <h1>PROPOSTA DE TRABALHO</h1>
