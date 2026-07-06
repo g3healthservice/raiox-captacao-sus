@@ -114,7 +114,7 @@ def main():
             L.append(f"    {mv['desc']}")
             L.append(f"    Proposta {mv['nu']} · https://consultafns.saude.gov.br/#/proposta/{mv['nu']}/detalhe")
         L += ["", f"Total de movimentações: {len(movs)}",
-              "", "Painel: https://g3healthservice.github.io/raiox-captacao-sus/",
+              "", "Painel: https://g3healthservice.github.io/raiox-captacao-sus/#k=eyJwZXJtIjp0cnVlLCJuIjoiRzMifQ.c6brfm",
               "— Robô Raio-X SUS · G3 Health Service"]
         EMAIL.write_text("\n".join(L), encoding="utf-8")
         print(f"TEM_NOVOS=1  ({len(movs)} movimentação(ões))")
