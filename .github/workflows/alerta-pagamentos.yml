@@ -28,6 +28,7 @@ jobs:
           cp pipeline/alerta_pagamentos.py ~/raiox/
           cp pipeline/fontes/* ~/raiox/fontes/
           cp pipeline/estado_pagamentos.json ~/raiox/estado_pagamentos.json
+          cp pipeline/ctrl_save_url.txt ~/raiox/ 2>/dev/null || true
 
       - name: Detectar pagamentos
         id: det
@@ -35,10 +36,26 @@ jobs:
           cd ~/raiox
           out=$(python3 alerta_pagamentos.py); echo "$out"
           if echo "$out" | grep -q "TEM_NOVOS=1"; then echo "novos=1" >> "$GITHUB_OUTPUT"; else echo "novos=0" >> "$GITHUB_OUTPUT"; fi
+          if echo "$out" | grep -q "TEM_PAGAMENTO=1"; then echo "pagamento=1" >> "$GITHUB_OUTPUT"; else echo "pagamento=0" >> "$GITHUB_OUTPUT"; fi
           cp -f ~/raiox/estado_pagamentos.json "$GITHUB_WORKSPACE/pipeline/estado_pagamentos.json"
           [ -f ~/raiox/alerta_email.txt ] && cp ~/raiox/alerta_email.txt "$GITHUB_WORKSPACE/alerta_email.txt" || true
+          [ -f ~/raiox/alerta_email_pagamento.txt ] && cp ~/raiox/alerta_email_pagamento.txt "$GITHUB_WORKSPACE/alerta_email_pagamento.txt" || true
 
-      - name: Enviar e-mail (só se houver novos pagamentos)
+      - name: Enviar e-mail de PAGAMENTO (assunto chamativo — só se detectou pagamento)
+        if: steps.det.outputs.pagamento == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "💰💰💰 PAGAMENTO CONFIRMADO — Raio-X SUS 💰💰💰"
+          to: g3.healthservice@proton.me
+          from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
+          body: file://alerta_email_pagamento.txt
+
+      - name: Enviar e-mail (só se houver novas movimentações)
         if: steps.det.outputs.novos == '1'
         uses: dawidd6/action-send-mail@v3
         with:
@@ -47,7 +64,7 @@ jobs:
           secure: true
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "[Raio-X SUS] Novos pagamentos de custeio MAC/PAP"
+          subject: "[Raio-X SUS] Novas movimentações de custeio MAC/PAP"
           to: g3.healthservice@proton.me
           from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
           body: file://alerta_email.txt
