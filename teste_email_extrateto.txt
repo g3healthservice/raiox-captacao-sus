@@ -1,0 +1,18 @@
+*** ESTE É UM E-MAIL DE TESTE — pagamento SIMULADO para avaliar o formato ***
+
+💰💰💰 PAGAMENTO(S) CONFIRMADO(S) — Propostas EXTRA-TETO (G3) 💰💰💰
+
+📍 TUPACIGUARA/MG — CUSTEIO MAC — Proposta 63000726340202600
+   Responsável (captador): Max GYN
+   Situação: LIBERADO PAGAMENTO FNS
+   Portaria nº 11848 de 03/07/2026
+   Parcela | Data Pagamento | Valor Pagamento | Valor Acumulado | Ordem Bancária | Nº Processo Pgto | Localização
+   Única | 06/07/2026 | R$ 1.000.000,00 | R$ 1.000.000,00 | 2026OB063013 | 25000.100857/2026-05 | COOF em 07/07/2026 11:32
+   🔗 https://consultafns.saude.gov.br/#/proposta/63000726340202600/detalhe
+
+Total pago (soma das parcelas acima): R$ 1.000.000,00
+
+Painel: https://g3healthservice.github.io/raiox-captacao-sus/
+— Robô Raio-X SUS · G3 Health Service
+
+(E-mail de TESTE — nenhum pagamento real ocorreu; proposta usada apenas como exemplo de formatação.)

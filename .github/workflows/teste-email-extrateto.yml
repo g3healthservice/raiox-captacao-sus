@@ -1,0 +1,22 @@
+name: teste-email-extrateto
+
+on:
+  workflow_dispatch:
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enviar e-mail de TESTE
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "TESTE - PROPOSTA EXTRA-TETO"
+          to: gersongomes@brain27.com.br, fs@brain27.com.br
+          from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
+          body: file://teste_email_extrateto.txt
