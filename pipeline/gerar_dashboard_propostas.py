@@ -360,7 +360,7 @@ function loadCtrl(){
     const hdr=rows.shift().map(h=>h.trim().toLowerCase());
     const idx=n=>hdr.findIndex(h=>h.startsWith(n));
     const iI=idx('ibge'),iR=idx('responsavel'),iS=idx('status'),iD=idx('data_inicio'),iPe=idx('pct_equipe'),iPg=idx('pct_g3'),iV=idx('valor'),iO=idx('observ'),iM=idx('municipio'),iA=idx('anexo'),
-          iNP=idx('nu_prop'),iTp=idx('tipo'),iVP=idx('valor_prop');
+          iNP=idx('nu_prop'),iTp=idx('tipo'),iVP=idx('valor_prop'),iPagoEm=idx('pago_em'),iValorPago=idx('valor_pago');
     CTRL={};
     rows.forEach(r=>{
       const ibge=(r[iI]||'').trim().slice(0,6);
@@ -369,6 +369,7 @@ function loadCtrl(){
       if(!key)return;
       CTRL[key]={ibge:ibge,responsavel:(r[iR]||'').trim(),status:(r[iS]||'').trim(),data_inicio:(r[iD]||'').trim(),
         pct_equipe:(r[iPe]||'').trim(),pct_g3:(r[iPg]||'').trim(),valor:iV>=0?(r[iV]||'').trim():'',observacoes:iO>=0?(r[iO]||'').trim():'',mun:(r[iM]||'').trim(),anexos:iA>=0?(r[iA]||'').trim():'',
+        pago_em:iPagoEm>=0?(r[iPagoEm]||'').trim():'',valor_pago:iValorPago>=0?(r[iValorPago]||'').trim():'',
         nu_proposta:nuProposta,tipo:iTp>=0?(r[iTp]||'').trim():'',valor_proposta:iVP>=0?(r[iVP]||'').trim():''};
     });
     _pendAplicar();  // sobrepõe gravações recentes ainda não refletidas no CSV
@@ -578,6 +579,62 @@ async function extrairNuPropostaPDF(file){
   const m=text.match(/\b\d{17}\b/);
   return m?m[0]:null;
 }
+/** Consulta a proposta no FNS (via proxy do Apps Script). Lança erro em caso de falha. */
+async function _lookupPropostaFNS(nu){
+  const resp=await fetch(CTRL_SAVE_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify({token:CTRL_TOKEN,action:'lookupProposta',nuProposta:nu})});
+  const j=await resp.json();
+  if(!j||!j.ok) throw new Error((j&&j.error)||'falha ao consultar o FNS');
+  return j.proposta;
+}
+/** Salva um lead DIRETO na planilha (sem depender do formulário visível) — usado no modo em lote. */
+function _salvarLeadDireto(fields){
+  const payload=Object.assign({token:CTRL_TOKEN},fields);
+  const key=fields.nu_proposta||fields.ibge;
+  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});
+  const prev=CTRL[key]||{};
+  CTRL[key]=Object.assign({},prev,{ibge:fields.ibge,mun:fields.municipio,responsavel:fields.responsavel||'',status:fields.status||'',
+    data_inicio:fields.data_inicio||'',pct_equipe:'15',pct_g3:'5',valor:prev.valor||'',observacoes:fields.observacoes||'',
+    anexos:prev.anexos||'',nu_proposta:fields.nu_proposta||'',tipo:fields.tipo||'',valor_proposta:fields.valor_proposta||''});
+  _pendMarcar(key,CTRL[key]);
+  return key;
+}
+async function ctrlGerarLeadsPDF(fileList){
+  const files=[...(fileList||[])];
+  if(!files.length)return;
+  if(files.length===1){ await ctrlGerarLeadPDF(files[0]); return; }
+  // ---- MODO EM LOTE: vários PDFs, 1 lead por proposta, pula duplicadas ----
+  const log=document.getElementById('pdfBatchLog');
+  log.style.display='block';log.innerHTML='';
+  const linha=t=>{const d=document.createElement('div');d.textContent=t;log.appendChild(d);log.scrollTop=log.scrollHeight;};
+  const respPadrao=(document.getElementById('addResp').value||'').trim();
+  const statPadrao=(document.getElementById('addStat').value||'').trim()||'Em análise';
+  linha('Processando '+files.length+' arquivo(s)...');
+  let criados=0,ignorados=0,falhas=0;
+  for(const file of files){
+    let nu=null;
+    try{ nu=await extrairNuPropostaPDF(file); }catch(e){ nu=null; }
+    if(!nu){ linha('⚠ "'+file.name+'": não identificamos o Nº da Proposta — envie individualmente e digite manualmente.'); falhas++; continue; }
+    if(CTRL[nu]){ linha('↷ "'+file.name+'": proposta '+nu+' já cadastrada ('+(CTRL[nu].mun||'município desconhecido')+') — ignorada, sem duplicar.'); ignorados++; continue; }
+    let p;
+    try{ p=await _lookupPropostaFNS(nu); }catch(e){ linha('⚠ "'+file.name+'": falha ao consultar o FNS ('+nu+') — '+e.message); falhas++; continue; }
+    const alvo=_normNome(p.municipio);
+    const m=D.muns.find(x=>x.uf===p.uf&&_normNome(x.mun)===alvo);
+    if(!m){ linha('⚠ Proposta '+nu+': município "'+p.municipio+'/'+p.uf+'" não reconhecido — envie individualmente para ajustar.'); falhas++; continue; }
+    if(CTRL[nu]){ linha('↷ "'+file.name+'": proposta '+nu+' já cadastrada — ignorada.'); ignorados++; continue; } // checagem final anti-corrida
+    const tipo=/MAC/i.test(p.tipo)?'MAC':/PAP/i.test(p.tipo)?'PAP':(p.tipo||'');
+    const valorFmt=Number(p.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const obs='Proposta '+(p.tipo||'')+' nº '+p.nuProposta+(p.situacao?' — '+p.situacao:'')+' — '+(p.entidade||'');
+    const key=_salvarLeadDireto({ibge:m.ibge,municipio:m.mun,uf:m.uf,nu_proposta:p.nuProposta,tipo:tipo,valor_proposta:valorFmt,
+      responsavel:respPadrao,status:statPadrao,data_inicio:_hoje(),observacoes:obs});
+    try{ await _uploadAnexo(file,{ibge:m.ibge,nu_proposta:p.nuProposta},key); }catch(e){ /* lead já foi salvo; anexo pode ser reenviado depois */ }
+    linha('✔ "'+file.name+'": lead criado — '+m.mun+'/'+m.uf+' · '+tipo+' · R$ '+valorFmt);
+    criados++;
+  }
+  linha('— Concluído: '+criados+' criado(s), '+ignorados+' ignorado(s) (duplicada), '+falhas+' falha(s). —');
+  renderCtrl();
+  document.getElementById('pdfLeadInput').value='';
+}
 async function ctrlGerarLeadPDF(file){
   if(!file)return;
   const msg=document.getElementById('addMsg');
@@ -599,13 +656,16 @@ async function ctrlBuscarProposta(nu){
   nu=String(nu||'').trim();
   if(!/^\d{10,20}$/.test(nu)){msg.style.color='#c0392b';msg.textContent='Nº de proposta inválido — confira o número (17 dígitos).';return;}
   if(!CTRL_SAVE_URL){msg.style.color='#ca6f1e';msg.textContent='Consulta automática ao FNS não configurada.';return;}
+  if(CTRL[nu]){
+    ctrlEditar(nu);
+    msg.style.color='#2471a3';
+    msg.textContent='Esta proposta já está cadastrada — carregada para edição (não duplicada).';
+    window._pendingLeadPDF=null;
+    return;
+  }
   msg.style.color='#8a97a5';msg.textContent='Consultando FNS (proposta '+nu+')...';
   try{
-    const resp=await fetch(CTRL_SAVE_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify({token:CTRL_TOKEN,action:'lookupProposta',nuProposta:nu})});
-    const j=await resp.json();
-    if(!j||!j.ok){msg.style.color='#c0392b';msg.textContent='Falha ao consultar o FNS: '+((j&&j.error)||'erro desconhecido');return;}
-    const p=j.proposta;
+    const p=await _lookupPropostaFNS(nu);
     const alvo=_normNome(p.municipio);
     const m=D.muns.find(x=>x.uf===p.uf&&_normNome(x.mun)===alvo);
     const $=id=>document.getElementById(id);
@@ -627,7 +687,7 @@ async function ctrlBuscarProposta(nu){
       msg.textContent='✔ Proposta '+p.nuProposta+' — '+m.mun+'/'+m.uf+'. Confira responsável/status e clique 💾 Salvar.';
     }
   }catch(err){
-    msg.style.color='#c0392b';msg.textContent='Erro ao consultar o FNS. Verifique a conexão e tente novamente.';
+    msg.style.color='#c0392b';msg.textContent='Erro ao consultar o FNS: '+(err&&err.message||'verifique a conexão e tente novamente.');
   }
 }
 function ctrlRemover(key,mun){
@@ -658,15 +718,16 @@ function renderCtrl(){
     </div>
     <div class="panel" style="margin-bottom:12px;border-left:3px solid #7d3c98">
       <h3 style="color:#7d3c98;margin-bottom:4px">📄 Gerar lead a partir de Proposta (PDF)</h3>
-      <div style="font-size:11px;color:#6b7785;margin-bottom:8px">Anexe o PDF da proposta de custeio MAC/PAP (baixado do Consulta FNS). O sistema tenta identificar o <b>Nº da Proposta</b> sozinho e busca os dados oficiais (município, tipo, valor) direto no FNS.</div>
+      <div style="font-size:11px;color:#6b7785;margin-bottom:8px">Anexe o(s) PDF(s) da proposta de custeio MAC/PAP (baixado do Consulta FNS) — pode selecionar <b>vários de uma vez</b>. O sistema identifica o <b>Nº da Proposta</b> de cada um, busca os dados oficiais no FNS e cria um lead por proposta. Propostas já cadastradas (mesmo nº) são <b>ignoradas automaticamente</b>, sem duplicar.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <button class="btn btn-live" style="background:#7d3c98" onclick="document.getElementById('pdfLeadInput').click()">📄 Selecionar PDF da proposta</button>
-        <input type="file" id="pdfLeadInput" accept="application/pdf,.pdf" style="display:none" onchange="ctrlGerarLeadPDF(this.files[0])">
+        <button class="btn btn-live" style="background:#7d3c98" onclick="document.getElementById('pdfLeadInput').click()">📄 Selecionar PDF(s) da proposta</button>
+        <input type="file" id="pdfLeadInput" accept="application/pdf,.pdf" multiple style="display:none" onchange="ctrlGerarLeadsPDF(this.files)">
       </div>
       <div id="addNuManualWrap" style="display:none;gap:8px;align-items:center;margin-top:8px">
         <input id="addNuManual" placeholder="Não identificamos sozinhos — cole aqui o Nº da Proposta" style="${CTRL_ADDF};max-width:320px">
         <button class="btn btn-x" onclick="ctrlBuscarProposta(document.getElementById('addNuManual').value.trim())">🔍 Buscar no FNS</button>
       </div>
+      <div id="pdfBatchLog" style="margin-top:8px;font-size:11px;color:#5f6b78;display:none;max-height:160px;overflow-y:auto;background:#fafbfc;border-radius:6px;padding:8px 10px"></div>
     </div>
     <div class="panel" style="margin-bottom:12px">
       <h3 style="color:#0e3d59;margin-bottom:8px">➕ Adicionar / atualizar lead</h3>
@@ -712,13 +773,16 @@ function renderCtrl(){
         const obs=v.observacoes||'';
         const nAnexos=_anexosParse(v.anexos).length;
         const valorProp=parseFloat(String(v.valor_proposta||'').replace(/\./g,'').replace(',','.'))||0;
+        const valorPago=parseFloat(String(v.valor_pago||'').replace(/\./g,'').replace(',','.'))||0;
+        const pago=!!(v.pago_em||'').trim();
         const tr=document.createElement('tr');tr.className='mrow';if(m)tr.onclick=()=>openDetail(m);
+        if(pago){tr.style.background='#f0faf3';tr.style.borderLeft='3px solid #1e8449';}
         tr.innerHTML=`<td><b>${v.mun||(m?m.mun:k)}</b> <span style="color:#aab4bf">${m?m.uf:''}</span></td>
           <td>${v.responsavel||'—'}</td>
           <td><span class="pill" style="background:${sc[0]};color:${sc[1]}">${v.status||'—'}</span></td>
           <td style="color:#5f6b78">${v.data_inicio?fmtDataBR(v.data_inicio):'—'}</td>
           <td style="color:#5f6b78;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${obs.replace(/"/g,'&quot;')}">${obs||'—'}</td>
-          <td style="font-size:10.5px;color:#5f6b78" title="${v.nu_proposta||''}">${v.nu_proposta||'—'}</td>
+          <td style="font-size:10.5px;color:#5f6b78" title="${v.nu_proposta||''}">${v.nu_proposta||'—'}${pago?`<div style="color:#1e8449;font-weight:700;font-size:10px;white-space:nowrap">✔ PAGO ${fmtDataBR(v.pago_em)}${valorPago?' · '+fmtK(valorPago):''}</div>`:''}</td>
           <td>${v.tipo?blocoPill(v.tipo):'<span style="color:#aab4bf">—</span>'}</td>
           <td class="num" style="color:#5f6b78">${valorProp?fmtK(valorProp):'—'}</td>
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
@@ -740,8 +804,10 @@ function ctrlPanel(m){
   if(!leads.length)return `<div class="panel" style="margin-bottom:14px;border-left:3px solid #c3ccd6"><h3>Responsável (controladoria)</h3><div style="font-size:12px;color:#8a97a5">Município ainda não cadastrado na controladoria. Adicione na aba Controladoria.</div></div>`;
   const cards=leads.map(c=>{
     const sc=statusColor(c.status);
-    return `<div style="border-left:3px solid ${sc[1]};padding:8px 12px;margin-top:${leads.length>1?'8px':'0'};background:#fafbfc;border-radius:0 6px 6px 0">
+    const pago=!!(c.pago_em||'').trim();
+    return `<div style="border-left:3px solid ${pago?'#1e8449':sc[1]};padding:8px 12px;margin-top:${leads.length>1?'8px':'0'};background:${pago?'#f0faf3':'#fafbfc'};border-radius:0 6px 6px 0">
       ${c.nu_proposta?`<div style="font-size:10.5px;color:#7d3c98;font-weight:700;margin-bottom:4px">Proposta ${c.nu_proposta}${c.tipo?' · '+c.tipo:''}${c.valor_proposta?' · R$ '+c.valor_proposta:''}</div>`:''}
+      ${pago?`<div style="font-size:11px;color:#1e8449;font-weight:700;margin-bottom:4px">✔ PAGO em ${fmtDataBR(c.pago_em)}${c.valor_pago?' · R$ '+c.valor_pago:''}</div>`:''}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:12px">
         <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Responsável</div><b>${c.responsavel||'—'}</b></div>
         <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Status</div><span class="pill" style="background:${sc[0]};color:${sc[1]}">${c.status||'—'}</span></div>
