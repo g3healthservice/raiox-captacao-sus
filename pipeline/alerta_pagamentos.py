@@ -68,9 +68,10 @@ def _descreve_outro(old, new):
 
 
 def _eh_pagamento_novo(old, new):
+    # mantido por compatibilidade; a decisão real usa a flag pago_alertado (ver main())
     if old is None:
-        return False
-    return new["pago"] > old.get("pago", 0) or new["npag"] > old.get("npag", 0)
+        return new["pago"] > 0
+    return new["pago"] > old.get("pago", 0)
 
 
 def ler_controladoria():
@@ -133,13 +134,21 @@ def main():
                         continue
                     novo = _sig(it)
                     antigo = estado.get(nu)
-                    if not primeira_vez and _eh_pagamento_novo(antigo, novo):
+                    ja_alertado = bool(antigo and antigo.get("pago_alertado"))
+                    pago_atual = novo["pago"] > 0
+                    if primeira_vez:
+                        # seed inicial: marca já-pagas como avisadas (não notifica retroativo)
+                        novo["pago_alertado"] = pago_atual
+                    elif pago_atual and not ja_alertado:
+                        # ALERTA DE PAGAMENTO: paga e ainda não avisada (cobre "visto já pago")
+                        novo["pago_alertado"] = True
                         info = por_proposta.get(nu, {})
                         pagamentos_novos.append({
                             "mun": nome, "uf": it.get("sgUf", ""), "nu": nu, "bloco": tp, "ano": ano,
                             "responsavel": info.get("responsavel", ""), "ibge": ibge,
                         })
-                    elif not primeira_vez:
+                    else:
+                        novo["pago_alertado"] = ja_alertado
                         desc = _descreve_outro(antigo, novo)
                         if desc:
                             movs_outros.append({"mun": nome, "uf": it.get("sgUf", ""), "nu": nu,
@@ -164,9 +173,18 @@ def main():
             nu_portaria = detalhe.get("nuPortaria") or ""
             dt_portaria_ms = detalhe.get("dtPortaria")
             dt_portaria = _epoch_br(dt_portaria_ms)
+            situacao = ((detalhe.get("situacao") or {}).get("descricaoSituacaoproposta")
+                        or detalhe.get("situacaoUltimaAnalise") or "")
+            vl_pago_total = float(detalhe.get("vlPago") or 0)
+            # se o detalhe ainda não trouxe a linha de pagamento (OB), sintetiza a partir do vlPago
+            if not pagamentos and vl_pago_total > 0:
+                pagamentos = [{"nuParcela": "(liberado)", "dtCriacaoSiafi": None, "vlLiquido": vl_pago_total,
+                               "vlAcumulado": vl_pago_total, "nuOb": "", "nuProcesso": "", "localizacao": situacao}]
             L.append(f"📍 {pv['mun']}/{pv['uf']} — {pv['bloco']} — Proposta {pv['nu']}")
             if pv["responsavel"]:
                 L.append(f"   Responsável: {pv['responsavel']}")
+            if situacao:
+                L.append(f"   Situação: {situacao}")
             if nu_portaria:
                 L.append(f"   Portaria nº {nu_portaria}" + (f" de {dt_portaria}" if dt_portaria else ""))
             L.append("   Parcela | Data Pagamento | Valor Pagamento | Valor Acumulado | Ordem Bancária | Nº Processo Pgto | Localização")
