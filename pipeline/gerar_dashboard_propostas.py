@@ -41,6 +41,7 @@ HTML = r"""<!DOCTYPE html>
 <title>Raio-X de Captação SUS — Propostas MAC/PAP × Desconto FAF · G3</title>
 __CHARTJS__
 __JSPDF__
+__PDFJS__
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;background:#d6dde5;color:#1f2933;font-size:13px}
@@ -358,13 +359,17 @@ function loadCtrl(){
     const rows=parseCSV(txt).filter(r=>r.length>1&&r.join('').trim());
     const hdr=rows.shift().map(h=>h.trim().toLowerCase());
     const idx=n=>hdr.findIndex(h=>h.startsWith(n));
-    const iI=idx('ibge'),iR=idx('responsavel'),iS=idx('status'),iD=idx('data_inicio'),iPe=idx('pct_equipe'),iPg=idx('pct_g3'),iV=idx('valor'),iO=idx('observ'),iM=idx('municipio'),iA=idx('anexo');
+    const iI=idx('ibge'),iR=idx('responsavel'),iS=idx('status'),iD=idx('data_inicio'),iPe=idx('pct_equipe'),iPg=idx('pct_g3'),iV=idx('valor'),iO=idx('observ'),iM=idx('municipio'),iA=idx('anexo'),
+          iNP=idx('nu_prop'),iTp=idx('tipo'),iVP=idx('valor_prop');
     CTRL={};
     rows.forEach(r=>{
       const ibge=(r[iI]||'').trim().slice(0,6);
-      if(!ibge)return;
-      CTRL[ibge]={responsavel:(r[iR]||'').trim(),status:(r[iS]||'').trim(),data_inicio:(r[iD]||'').trim(),
-        pct_equipe:(r[iPe]||'').trim(),pct_g3:(r[iPg]||'').trim(),valor:iV>=0?(r[iV]||'').trim():'',observacoes:iO>=0?(r[iO]||'').trim():'',mun:(r[iM]||'').trim(),anexos:iA>=0?(r[iA]||'').trim():''};
+      const nuProposta=iNP>=0?(r[iNP]||'').trim():'';
+      const key=nuProposta||ibge;  // vários leads (propostas) podem compartilhar o mesmo ibge
+      if(!key)return;
+      CTRL[key]={ibge:ibge,responsavel:(r[iR]||'').trim(),status:(r[iS]||'').trim(),data_inicio:(r[iD]||'').trim(),
+        pct_equipe:(r[iPe]||'').trim(),pct_g3:(r[iPg]||'').trim(),valor:iV>=0?(r[iV]||'').trim():'',observacoes:iO>=0?(r[iO]||'').trim():'',mun:(r[iM]||'').trim(),anexos:iA>=0?(r[iA]||'').trim():'',
+        nu_proposta:nuProposta,tipo:iTp>=0?(r[iTp]||'').trim():'',valor_proposta:iVP>=0?(r[iVP]||'').trim():''};
     });
     _pendAplicar();  // sobrepõe gravações recentes ainda não refletidas no CSV
     ctrlLoaded=true;
@@ -407,6 +412,8 @@ function ctrlSetIbge(){
   const ibge=m?m.ibge:'';
   const $=id=>document.getElementById(id);
   $('addIbge').value=ibge;
+  // seleção manual de município = lead avulso (não vinculado a uma proposta específica ainda)
+  $('addNuProposta').value='';$('addTipo').value='';$('addValorProposta').value='';
   const c=ibge?CTRL[ibge]:null, msg=$('addMsg');
   if(c){ // já existe -> modo EDIÇÃO: pré-preenche os campos
     $('addResp').value=c.responsavel||'';
@@ -440,6 +447,7 @@ function ctrlCopiarLinha(){
 function ctrlSalvar(){
   const msg=document.getElementById('addMsg');
   const ibge=document.getElementById('addIbge').value.trim();
+  const nuProposta=(document.getElementById('addNuProposta').value||'').trim();
   if(!ibge){msg.style.color='#c0392b';msg.textContent='Selecione um município válido da lista.';return;}
   if(!CTRL_SAVE_URL){msg.style.color='#ca6f1e';msg.textContent='Salvamento direto ainda não configurado — use "Copiar linha".';return;}
   const [nome,uf]=document.getElementById('addMun').value.split('/');
@@ -449,16 +457,32 @@ function ctrlSalvar(){
     data_inicio:document.getElementById('addData').value.trim(),
     pct_equipe:'15',pct_g3:'5',
     observacoes:document.getElementById('addObs').value.trim()};
+  if(nuProposta){
+    payload.nu_proposta=nuProposta;
+    payload.tipo=(document.getElementById('addTipo').value||'').trim();
+    payload.valor_proposta=(document.getElementById('addValorProposta').value||'').trim();
+  }
+  const key=nuProposta||ibge;  // várias propostas (leads) podem compartilhar o mesmo ibge
   // envia (fire-and-forget; Apps Script grava na planilha)
   fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});
   // ATUALIZA A TABELA NA HORA (otimista) — não depende do cache do CSV publicado
-  const prev=CTRL[ibge]||{};
-  CTRL[ibge]={responsavel:payload.responsavel,status:payload.status,data_inicio:payload.data_inicio,
-    pct_equipe:'15',pct_g3:'5',valor:prev.valor||'',observacoes:payload.observacoes,mun:nome,anexos:prev.anexos||''};
-  _pendMarcar(ibge,CTRL[ibge]);  // sobrevive ao ↻ Atualizar enquanto o CSV não reflete
+  const prev=CTRL[key]||{};
+  CTRL[key]=Object.assign({},prev,{ibge:ibge,responsavel:payload.responsavel,status:payload.status,data_inicio:payload.data_inicio,
+    pct_equipe:'15',pct_g3:'5',valor:prev.valor||'',observacoes:payload.observacoes,mun:nome,anexos:prev.anexos||'',
+    nu_proposta:nuProposta||'',tipo:payload.tipo||'',valor_proposta:payload.valor_proposta||''});
+  _pendMarcar(key,CTRL[key]);  // sobrevive ao ↻ Atualizar enquanto o CSV não reflete
   renderCtrl();
   const m2=document.getElementById('addMsg');
-  if(m2){m2.style.color='#1e8449';m2.textContent='✔ Salvo na planilha e atualizado na lista!';}
+  // se este lead veio de um PDF de proposta anexado, sobe o arquivo original agora (a linha já existe)
+  const pendFile=window._pendingLeadPDF;
+  if(pendFile){
+    window._pendingLeadPDF=null;
+    _uploadAnexo(pendFile,{ibge:ibge,nu_proposta:nuProposta||''},key)
+      .then(()=>{if(m2){m2.style.color='#1e8449';m2.textContent='✔ Lead salvo e PDF anexado!';}})
+      .catch(()=>{if(m2){m2.style.color='#ca6f1e';m2.textContent='Lead salvo, mas falhou anexar o PDF — tente pelo 📎.';}});
+  } else if(m2){
+    m2.style.color='#1e8449';m2.textContent='✔ Salvo na planilha e atualizado na lista!';
+  }
 }
 /* ---- Anexos: "nome::url|nome2::url2" <-> [{filename,url}] ---- */
 function _anexosParse(str){
@@ -472,18 +496,22 @@ function _anexosRenderList(str){
   if(!arr.length)return '<span style="font-size:11px;color:#aab4bf">Nenhum anexo ainda.</span>';
   return arr.map(a=>`<a href="${a.url}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;background:#eef1f5;border-radius:6px;padding:4px 9px;font-size:11px;color:#2471a3;text-decoration:none">📎 ${a.filename}</a>`).join('');
 }
-function ctrlEditar(ibge){
-  const c=CTRL[ibge];if(!c)return;
+function ctrlEditar(key){
+  const c=CTRL[key];if(!c)return;
+  const ibge=c.ibge||key;
   const m=D.muns.find(x=>String(x.ibge)===String(ibge));
   const $=id=>document.getElementById(id);
   $('addMun').value=m?(m.mun+'/'+m.uf):(c.mun||'');
   $('addIbge').value=ibge;
+  $('addNuProposta').value=c.nu_proposta||'';
+  $('addTipo').value=c.tipo||'';
+  $('addValorProposta').value=c.valor_proposta||'';
   $('addResp').value=c.responsavel||'';
   $('addStat').value=c.status||'';
   $('addData').value=(c.data_inicio||'').slice(0,10);
   $('addObs').value=c.observacoes||'';
   const al=$('addAnexosList');if(al)al.innerHTML=_anexosRenderList(c.anexos);
-  const msg=$('addMsg');if(msg){msg.style.color='#2471a3';msg.textContent='✏️ Editando '+(c.mun||m&&m.mun||'')+' — altere e clique 💾 Salvar.';}
+  const msg=$('addMsg');if(msg){msg.style.color='#2471a3';msg.textContent='✏️ Editando '+(c.mun||m&&m.mun||'')+(c.nu_proposta?' · proposta '+c.nu_proposta:'')+' — altere e clique 💾 Salvar.';}
   const box=document.querySelector('#ctrlBody .panel');if(box)box.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function ctrlAnexarClick(){
@@ -491,45 +519,126 @@ function ctrlAnexarClick(){
   if(!ibge){alert('Selecione o município primeiro (o IBGE precisa estar preenchido).');return;}
   document.getElementById('addAnexoInput').click();
 }
+const MAX_ANEXO_BYTES=8*1024*1024;
+/** Sobe UM arquivo como anexo do lead identificado por keys={ibge,nu_proposta} (targetKey = chave já resolvida no CTRL). */
+async function _uploadAnexo(file,keys,targetKey){
+  if(file.size>MAX_ANEXO_BYTES){throw new Error('"'+file.name+'" tem mais de 8MB.');}
+  const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  const resp=await fetch(CTRL_SAVE_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(Object.assign({token:CTRL_TOKEN,action:'upload',filename:file.name,mimetype:file.type||'application/octet-stream',dataB64:b64},keys))});
+  const j=await resp.json();
+  if(!(j&&j.ok&&j.url&&j.filename)) throw new Error((j&&j.error)||'falha desconhecida ao anexar');
+  const prev=CTRL[targetKey]||{};
+  const arr=_anexosParse(prev.anexos);arr.push({filename:j.filename,url:j.url});
+  const novo=_anexosStringify(arr);
+  CTRL[targetKey]=Object.assign({},prev,{anexos:novo});
+  _pendMarcar(targetKey,{anexos:novo});
+  const al=document.getElementById('addAnexosList');
+  if(al&&document.getElementById('addIbge').value.trim()===(keys.ibge||'')&&(document.getElementById('addNuProposta').value||'').trim()===(keys.nu_proposta||''))al.innerHTML=_anexosRenderList(novo);
+  if(window._ctrlDrawTable)window._ctrlDrawTable();
+  return j;
+}
 async function ctrlAnexarUpload(fileList){
   const ibge=document.getElementById('addIbge').value.trim();
+  const nuProposta=(document.getElementById('addNuProposta').value||'').trim();
   const msg=document.getElementById('addMsg');
   if(!ibge||!fileList||!fileList.length)return;
-  const files=[...fileList];
-  const MAXB=8*1024*1024;
-  for(const f of files){
-    if(f.size>MAXB){alert('"'+f.name+'" tem mais de 8MB — não enviado. Reduza o tamanho e tente de novo.');continue;}
+  const key=nuProposta||ibge;
+  for(const f of [...fileList]){
     msg.style.color='#8a97a5';msg.textContent='Enviando anexo: '+f.name+'...';
     try{
-      const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(f);});
-      const resp=await fetch(CTRL_SAVE_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:JSON.stringify({token:CTRL_TOKEN,action:'upload',ibge:ibge,filename:f.name,mimetype:f.type||'application/octet-stream',dataB64:b64})});
-      const j=await resp.json();
-      if(j&&j.ok&&j.url&&j.filename){
-        const prev=CTRL[ibge]||{};
-        const arr=_anexosParse(prev.anexos);arr.push({filename:j.filename,url:j.url});
-        const novo=_anexosStringify(arr);
-        CTRL[ibge]=Object.assign({},prev,{anexos:novo});
-        _pendMarcar(ibge,{anexos:novo});
-        const al=document.getElementById('addAnexosList');if(al)al.innerHTML=_anexosRenderList(novo);
-        msg.style.color='#1e8449';msg.textContent='✔ Anexo "'+f.name+'" salvo!';
-      } else {
-        msg.style.color='#c0392b';msg.textContent='Falha ao anexar "'+f.name+'": '+((j&&j.error)||'verifique se o Apps Script foi atualizado (v4)');
-      }
+      await _uploadAnexo(f,{ibge:ibge,nu_proposta:nuProposta},key);
+      msg.style.color='#1e8449';msg.textContent='✔ Anexo "'+f.name+'" salvo!';
     }catch(err){
-      msg.style.color='#c0392b';msg.textContent='Falha ao anexar "'+f.name+'". Verifique a conexão e tente de novo.';
+      msg.style.color='#c0392b';msg.textContent='Falha ao anexar "'+f.name+'": '+(err&&err.message||'verifique se o Apps Script foi atualizado (v5)');
     }
   }
-  // atualiza só a tabela — preserva o formulário em edição (não reseta município/campos)
-  if(window._ctrlDrawTable)window._ctrlDrawTable();
   document.getElementById('addAnexoInput').value='';
 }
-function ctrlRemover(ibge,mun){
+function ctrlNovoLead(){
+  const $=id=>document.getElementById(id);
+  ['addMun','addIbge','addNuProposta','addTipo','addValorProposta','addResp','addStat','addData','addObs'].forEach(id=>{const el=$(id);if(el)el.value='';});
+  const al=$('addAnexosList');if(al)al.innerHTML='';
+  const msg=$('addMsg');if(msg){msg.style.color='#8a97a5';msg.textContent='Formulário limpo — pronto para um novo lead.';}
+  const w=$('addNuManualWrap');if(w)w.style.display='none';
+  window._pendingLeadPDF=null;
+}
+function _normNome(s){return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();}
+/** Lê o PDF no navegador (pdf.js) e procura o Nº da Proposta: sempre 17 dígitos
+ *  (diferente do CNPJ, que tem 14) — evita depender do layout/posição do texto. */
+async function extrairNuPropostaPDF(file){
+  const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  let text='';
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const content=await page.getTextContent();
+    text+=content.items.map(it=>it.str).join(' ')+' ';
+  }
+  const m=text.match(/\b\d{17}\b/);
+  return m?m[0]:null;
+}
+async function ctrlGerarLeadPDF(file){
+  if(!file)return;
+  const msg=document.getElementById('addMsg');
+  msg.style.color='#8a97a5';msg.textContent='Lendo PDF da proposta...';
+  document.getElementById('addNuManualWrap').style.display='none';
+  window._pendingLeadPDF=file;
+  let nu=null;
+  try{ nu=await extrairNuPropostaPDF(file); }catch(err){ nu=null; }
+  if(nu){
+    await ctrlBuscarProposta(nu);
+  } else {
+    msg.style.color='#ca6f1e';
+    msg.textContent='Não conseguimos identificar o Nº da Proposta automaticamente neste PDF. Digite-o abaixo (está no topo do documento).';
+    document.getElementById('addNuManualWrap').style.display='flex';
+  }
+}
+async function ctrlBuscarProposta(nu){
+  const msg=document.getElementById('addMsg');
+  nu=String(nu||'').trim();
+  if(!/^\d{10,20}$/.test(nu)){msg.style.color='#c0392b';msg.textContent='Nº de proposta inválido — confira o número (17 dígitos).';return;}
+  if(!CTRL_SAVE_URL){msg.style.color='#ca6f1e';msg.textContent='Consulta automática ao FNS não configurada.';return;}
+  msg.style.color='#8a97a5';msg.textContent='Consultando FNS (proposta '+nu+')...';
+  try{
+    const resp=await fetch(CTRL_SAVE_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({token:CTRL_TOKEN,action:'lookupProposta',nuProposta:nu})});
+    const j=await resp.json();
+    if(!j||!j.ok){msg.style.color='#c0392b';msg.textContent='Falha ao consultar o FNS: '+((j&&j.error)||'erro desconhecido');return;}
+    const p=j.proposta;
+    const alvo=_normNome(p.municipio);
+    const m=D.muns.find(x=>x.uf===p.uf&&_normNome(x.mun)===alvo);
+    const $=id=>document.getElementById(id);
+    $('addMun').value=m?(m.mun+'/'+m.uf):(p.municipio+'/'+p.uf);
+    $('addIbge').value=m?m.ibge:'';
+    $('addNuProposta').value=p.nuProposta;
+    $('addTipo').value=/MAC/i.test(p.tipo)?'MAC':/PAP/i.test(p.tipo)?'PAP':(p.tipo||'');
+    $('addValorProposta').value=Number(p.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    if(!$('addObs').value.trim()){
+      $('addObs').value='Proposta '+(p.tipo||'')+' nº '+p.nuProposta+(p.situacao?' — '+p.situacao:'')+' — '+(p.entidade||'');
+    }
+    if(!$('addData').value)$('addData').value=_hoje();
+    document.getElementById('addNuManualWrap').style.display='none';
+    if(!m){
+      msg.style.color='#ca6f1e';
+      msg.textContent='Proposta encontrada (município "'+p.municipio+'/'+p.uf+'"), mas não achamos correspondência exata na lista — confira/selecione o município manualmente antes de salvar.';
+    } else {
+      msg.style.color='#1e8449';
+      msg.textContent='✔ Proposta '+p.nuProposta+' — '+m.mun+'/'+m.uf+'. Confira responsável/status e clique 💾 Salvar.';
+    }
+  }catch(err){
+    msg.style.color='#c0392b';msg.textContent='Erro ao consultar o FNS. Verifique a conexão e tente novamente.';
+  }
+}
+function ctrlRemover(key,mun){
   if(!CTRL_SAVE_URL){alert('Gravação direta não configurada.');return;}
   if(!confirm('Remover "'+mun+'" da controladoria?\n(apaga a linha na planilha — não afeta os dados do FNS)'))return;
-  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({token:CTRL_TOKEN,action:'delete',ibge:ibge})}).catch(()=>{});
-  delete CTRL[ibge];
-  _pendMarcarDel(ibge);  // impede o lead de "ressuscitar" no ↻ enquanto o CSV não reflete
+  const c=CTRL[key]||{};
+  const payload={token:CTRL_TOKEN,action:'delete',ibge:c.ibge||key};
+  if(c.nu_proposta)payload.nu_proposta=c.nu_proposta;
+  fetch(CTRL_SAVE_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)}).catch(()=>{});
+  delete CTRL[key];
+  _pendMarcarDel(key);  // impede o lead de "ressuscitar" no ↻ enquanto o CSV não reflete
   renderCtrl();
 }
 function renderCtrl(){
@@ -540,18 +649,33 @@ function renderCtrl(){
   document.getElementById('ctrlBody').innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
       <div><h3 style="color:#0e3d59;margin:0">Controladoria — pipeline de municípios</h3>
-        <div style="font-size:11px;color:#8a97a5">${entries.length} município(s) em acompanhamento · fonte: planilha G3</div></div>
+        <div style="font-size:11px;color:#8a97a5">${entries.length} lead(s) · ${new Set(entries.map(([k,v])=>v.ibge)).size} município(s) em acompanhamento · fonte: planilha G3</div></div>
       <div class="toolbar" style="margin:0">
         <select id="ctrlResp"><option value="">Todos responsáveis</option>${resps.map(r=>'<option>'+r+'</option>').join('')}</select>
         <select id="ctrlStat"><option value="">Todos status</option>${stats.map(s=>'<option>'+s+'</option>').join('')}</select>
         <button class="btn btn-x" onclick="loadCtrl().then(renderCtrl)">↻ Atualizar</button>
       </div>
     </div>
+    <div class="panel" style="margin-bottom:12px;border-left:3px solid #7d3c98">
+      <h3 style="color:#7d3c98;margin-bottom:4px">📄 Gerar lead a partir de Proposta (PDF)</h3>
+      <div style="font-size:11px;color:#6b7785;margin-bottom:8px">Anexe o PDF da proposta de custeio MAC/PAP (baixado do Consulta FNS). O sistema tenta identificar o <b>Nº da Proposta</b> sozinho e busca os dados oficiais (município, tipo, valor) direto no FNS.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-live" style="background:#7d3c98" onclick="document.getElementById('pdfLeadInput').click()">📄 Selecionar PDF da proposta</button>
+        <input type="file" id="pdfLeadInput" accept="application/pdf,.pdf" style="display:none" onchange="ctrlGerarLeadPDF(this.files[0])">
+      </div>
+      <div id="addNuManualWrap" style="display:none;gap:8px;align-items:center;margin-top:8px">
+        <input id="addNuManual" placeholder="Não identificamos sozinhos — cole aqui o Nº da Proposta" style="${CTRL_ADDF};max-width:320px">
+        <button class="btn btn-x" onclick="ctrlBuscarProposta(document.getElementById('addNuManual').value.trim())">🔍 Buscar no FNS</button>
+      </div>
+    </div>
     <div class="panel" style="margin-bottom:12px">
-      <h3 style="color:#0e3d59;margin-bottom:8px">➕ Adicionar / atualizar município</h3>
+      <h3 style="color:#0e3d59;margin-bottom:8px">➕ Adicionar / atualizar lead</h3>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
         <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Município (selecione)</div><input id="addMun" list="muniList" placeholder="Digite e selecione..." oninput="ctrlSetIbge()" style="${CTRL_ADDF}"></div>
         <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">IBGE (automático)</div><input id="addIbge" readonly placeholder="—" style="${CTRL_ADDF};background:#eef1f5;font-weight:700;color:#0e3d59"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Nº da Proposta</div><input id="addNuProposta" placeholder="preenchido via PDF/FNS" style="${CTRL_ADDF};background:#f7f2fb"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Tipo</div><input id="addTipo" list="tipoList" placeholder="MAC / PAP" style="${CTRL_ADDF};background:#f7f2fb"></div>
+        <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Valor da proposta (R$)</div><input id="addValorProposta" placeholder="0,00" style="${CTRL_ADDF};background:#f7f2fb"></div>
         <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Responsável</div><input id="addResp" list="respList" placeholder="Gerson / Chicao / Fernando" style="${CTRL_ADDF}"></div>
         <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Status</div><input id="addStat" list="statList" placeholder="Em análise..." style="${CTRL_ADDF}"></div>
         <div><div style="font-size:10px;color:#8a97a5;text-transform:uppercase;margin-bottom:2px">Data de criação (auto)</div><input id="addData" type="date" style="${CTRL_ADDF}"></div>
@@ -559,18 +683,20 @@ function renderCtrl(){
       </div>
       <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         ${CTRL_SAVE_URL?'<button class="btn btn-live" style="background:#1e8449" onclick="ctrlSalvar()">💾 Salvar na planilha</button>':'<button class="btn btn-x" onclick="ctrlCopiarLinha()">📋 Copiar linha p/ planilha</button>'}
+        <button class="btn btn-x" onclick="ctrlNovoLead()">🆕 Limpar formulário</button>
         <a class="btn btn-live" href="${CTRL_EDIT_URL}" target="_blank" style="text-decoration:none">✏️ Abrir planilha</a>
         ${CTRL_SAVE_URL?'<button class="btn btn-x" onclick="ctrlAnexarClick()">📎 Anexar arquivo/foto</button>':''}
         <input type="file" id="addAnexoInput" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" multiple style="display:none" onchange="ctrlAnexarUpload(this.files)">
         <span id="addMsg" style="font-size:11px"></span>
       </div>
       <div id="addAnexosList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
-      <div style="font-size:10.5px;color:#8a97a5;margin-top:6px">Selecione o município → o <b>IBGE preenche sozinho</b>. Se já estiver na lista, os campos <b>carregam para edição</b>; se for novo, a <b>data de criação entra automática (hoje)</b>. Preencha/edite e clique <b>💾 Salvar</b>. Anexos (fotos/documentos) ficam salvos no Drive e vinculados ao município — selecione-o antes de anexar.</div>
+      <div style="font-size:10.5px;color:#8a97a5;margin-top:6px">Selecione o município → o <b>IBGE preenche sozinho</b>. Se já estiver na lista, os campos <b>carregam para edição</b>; se for novo, a <b>data de criação entra automática (hoje)</b>. Um mesmo município pode ter <b>vários leads</b> (uma proposta cada). Preencha/edite e clique <b>💾 Salvar</b>. Anexos ficam salvos no Drive e vinculados ao lead.</div>
     </div>
     <datalist id="muniList">${D.muns.map(m=>'<option value="'+m.mun+'/'+m.uf+'">').join('')}</datalist>
     <datalist id="respList"><option value="Gerson Gomes"><option value="Chicao"><option value="Fernando Mota"><option value="Vicente"><option value="Rodolfo Pacheco"><option value="Mateus Costa"><option value="Max GYN"><option value="Guilherme Tabosa"></datalist>
     <datalist id="statList"><option value="Prospecção"><option value="Em análise"><option value="Em processo"><option value="Contratado"><option value="Concluído"></datalist>
-    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Criado em</th><th>Observações</th><th class="num">Nº único (custeio)</th><th>Bloco</th><th class="num">Recuperável</th><th>📎</th><th></th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
+    <datalist id="tipoList"><option value="MAC"><option value="PAP"></datalist>
+    <table class="gtbl"><thead><tr><th>Município</th><th>Responsável</th><th>Status</th><th>Criado em</th><th>Observações</th><th>Nº Proposta</th><th>Tipo</th><th class="num">Valor Proposta</th><th class="num">Nº único (custeio)</th><th>Bloco</th><th class="num">Recuperável</th><th>📎</th><th></th></tr></thead><tbody id="ctrlRows"></tbody></table>`;
   const draw=()=>{
     // recomputa a cada chamada (CTRL pode ter mudado, ex.: após anexar um arquivo)
     const entries=Object.entries(CTRL);
@@ -578,19 +704,23 @@ function renderCtrl(){
     const fr=document.getElementById('ctrlResp').value, fs=document.getElementById('ctrlStat').value, a=yr();
     const tb=document.getElementById('ctrlRows');tb.innerHTML='';
     entries.filter(([k,v])=>(!fr||v.responsavel===fr)&&(!fs||v.status===fs))
-      .map(([k,v])=>({k,v,m:byMun.get(k)}))
+      .map(([k,v])=>({k,v,m:byMun.get(v.ibge||k)}))
       .sort((x,y)=>(x.m?numUnico(y.m,a):0)-(y.m?numUnico(x.m,a):0))
       .forEach(({k,v,m})=>{
         const sc=statusColor(v.status);
         const nu=m?numUnico(m,a):0, rc=m?recuperavel(comps(m,a)):0;
         const obs=v.observacoes||'';
         const nAnexos=_anexosParse(v.anexos).length;
+        const valorProp=parseFloat(String(v.valor_proposta||'').replace(/\./g,'').replace(',','.'))||0;
         const tr=document.createElement('tr');tr.className='mrow';if(m)tr.onclick=()=>openDetail(m);
         tr.innerHTML=`<td><b>${v.mun||(m?m.mun:k)}</b> <span style="color:#aab4bf">${m?m.uf:''}</span></td>
           <td>${v.responsavel||'—'}</td>
           <td><span class="pill" style="background:${sc[0]};color:${sc[1]}">${v.status||'—'}</span></td>
           <td style="color:#5f6b78">${v.data_inicio?fmtDataBR(v.data_inicio):'—'}</td>
           <td style="color:#5f6b78;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${obs.replace(/"/g,'&quot;')}">${obs||'—'}</td>
+          <td style="font-size:10.5px;color:#5f6b78" title="${v.nu_proposta||''}">${v.nu_proposta||'—'}</td>
+          <td>${v.tipo?blocoPill(v.tipo):'<span style="color:#aab4bf">—</span>'}</td>
+          <td class="num" style="color:#5f6b78">${valorProp?fmtK(valorProp):'—'}</td>
           <td class="num" style="color:#7d3c98;font-weight:700">${m?fmtK(nu):'—'}</td>
           <td>${blocoPill(blocoLead(m,a))}</td>
           <td class="num" style="color:#1e8449">${m?fmtK(rc):'—'}</td>
@@ -598,26 +728,34 @@ function renderCtrl(){
           <td style="text-align:center;white-space:nowrap"><button title="Editar este lead" onclick="event.stopPropagation();ctrlEditar('${k}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.65;margin-right:2px">✏️</button><button title="Remover da controladoria" onclick="event.stopPropagation();ctrlRemover('${k}','${(v.mun||(m?m.mun:k)).replace(/'/g,'')}')" style="background:none;border:none;cursor:pointer;font-size:14px;opacity:.6">🗑️</button></td>`;
         tb.appendChild(tr);
       });
-    if(!tb.children.length)tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
+    if(!tb.children.length)tb.innerHTML='<tr><td colspan="13" style="text-align:center;color:#aab4bf;padding:16px">Nenhum município neste filtro.</td></tr>';
   };
   document.getElementById('ctrlResp').onchange=draw;document.getElementById('ctrlStat').onchange=draw;draw();
   window._ctrlDrawTable=draw;  // permite atualizar só a tabela (sem resetar o formulário) após anexar arquivo
 }
 function ctrlPanel(m){
   if(!ctrlUnlocked)return '';
-  const c=CTRL[String(m.ibge).slice(0,6)];
-  if(!c)return `<div class="panel" style="margin-bottom:14px;border-left:3px solid #c3ccd6"><h3>Responsável (controladoria)</h3><div style="font-size:12px;color:#8a97a5">Município ainda não cadastrado na controladoria. Adicione na planilha G3.</div></div>`;
-  const sc=statusColor(c.status);
-  return `<div class="panel" style="margin-bottom:14px;border-left:3px solid ${sc[1]}">
-    <h3>Responsável (controladoria)</h3>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:12px">
-      <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Responsável</div><b>${c.responsavel||'—'}</b></div>
-      <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Status</div><span class="pill" style="background:${sc[0]};color:${sc[1]}">${c.status||'—'}</span></div>
-      <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Criado em</div><b>${c.data_inicio?fmtDataBR(c.data_inicio):'—'}</b></div>
-      <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Consultoria</div><b>${c.pct_equipe||'?'}% equipe · ${c.pct_g3||'?'}% G3</b></div>
-      ${c.valor?`<div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Valor programas</div><b>${c.valor}</b></div>`:''}
-    </div>
-    ${c.observacoes?`<div style="margin-top:8px;font-size:11px;color:#5f6b78"><b>Obs.:</b> ${c.observacoes}</div>`:''}
+  const ibge=String(m.ibge).slice(0,6);
+  const leads=Object.entries(CTRL).filter(([k,v])=>v.ibge===ibge).map(([k,v])=>v);
+  if(!leads.length)return `<div class="panel" style="margin-bottom:14px;border-left:3px solid #c3ccd6"><h3>Responsável (controladoria)</h3><div style="font-size:12px;color:#8a97a5">Município ainda não cadastrado na controladoria. Adicione na aba Controladoria.</div></div>`;
+  const cards=leads.map(c=>{
+    const sc=statusColor(c.status);
+    return `<div style="border-left:3px solid ${sc[1]};padding:8px 12px;margin-top:${leads.length>1?'8px':'0'};background:#fafbfc;border-radius:0 6px 6px 0">
+      ${c.nu_proposta?`<div style="font-size:10.5px;color:#7d3c98;font-weight:700;margin-bottom:4px">Proposta ${c.nu_proposta}${c.tipo?' · '+c.tipo:''}${c.valor_proposta?' · R$ '+c.valor_proposta:''}</div>`:''}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:12px">
+        <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Responsável</div><b>${c.responsavel||'—'}</b></div>
+        <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Status</div><span class="pill" style="background:${sc[0]};color:${sc[1]}">${c.status||'—'}</span></div>
+        <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Criado em</div><b>${c.data_inicio?fmtDataBR(c.data_inicio):'—'}</b></div>
+        <div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Consultoria</div><b>${c.pct_equipe||'?'}% equipe · ${c.pct_g3||'?'}% G3</b></div>
+        ${c.valor?`<div><div style="color:#8a97a5;font-size:10px;text-transform:uppercase">Valor programas</div><b>${c.valor}</b></div>`:''}
+      </div>
+      ${c.observacoes?`<div style="margin-top:6px;font-size:11px;color:#5f6b78"><b>Obs.:</b> ${c.observacoes}</div>`:''}
+      ${_anexosParse(c.anexos).length?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px">${_anexosRenderList(c.anexos)}</div>`:''}
+    </div>`;
+  }).join('');
+  return `<div class="panel" style="margin-bottom:14px">
+    <h3>Responsável (controladoria) ${leads.length>1?'— '+leads.length+' leads':''}</h3>
+    ${cards}
   </div>`;
 }
 
@@ -1091,12 +1229,29 @@ def inl(t):
 
 method_html = md_to_html(md)
 
-# inline Chart.js + jsPDF (sem dependência de CDN -> abre offline, em qualquer máquina)
+# inline Chart.js + jsPDF + pdf.js (sem dependência de CDN -> abre offline, em qualquer máquina)
+import base64
 chartjs = (Path.home() / "raiox/vendor/chart.umd.js").read_text().replace("</script", "<\\/script")
 jspdf = (Path.home() / "raiox/vendor/jspdf.umd.min.js").read_text().replace("</script", "<\\/script")
 autotable = (Path.home() / "raiox/vendor/jspdf.autotable.min.js").read_text().replace("</script", "<\\/script")
+pdfjs = (Path.home() / "raiox/vendor/pdf.min.js").read_text().replace("</script", "<\\/script")
+pdfworker_b64 = base64.b64encode((Path.home() / "raiox/vendor/pdf.worker.min.js").read_bytes()).decode("ascii")
 out = HTML.replace("__CHARTJS__", "<script>\n" + chartjs + "\n</script>")
 out = out.replace("__JSPDF__", "<script>\n" + jspdf + "\n</script>\n<script>\n" + autotable + "\n</script>")
+pdfjs_block = (
+    "<script type=\"text/plain\" id=\"pdfWorkerB64\">" + pdfworker_b64 + "</script>\n"
+    "<script>\n" + pdfjs + "\n</script>\n"
+    "<script>\n"
+    "(function(){\n"
+    "  var b64=document.getElementById('pdfWorkerB64').textContent;\n"
+    "  var bin=atob(b64);var bytes=new Uint8Array(bin.length);\n"
+    "  for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);\n"
+    "  var blob=new Blob([bytes],{type:'application/javascript'});\n"
+    "  window.pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(blob);\n"
+    "})();\n"
+    "</script>"
+)
+out = out.replace("__PDFJS__", pdfjs_block)
 out = out.replace("__CTRL_SAVE_URL__", CTRL_SAVE_URL_VALUE)
 out = out.replace("__DATA__", json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 out = out.replace("__METHOD__", method_html)

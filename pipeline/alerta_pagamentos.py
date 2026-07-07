@@ -62,19 +62,21 @@ def _descreve(old, new):
 
 
 def ler_controladoria():
+    """Retorna (ibge, nome) únicos. Vários leads (propostas) podem compartilhar
+    o mesmo município — deduplica para não repetir consultas ao FNS."""
     txt = urllib.request.urlopen(CTRL_URL, timeout=30).read().decode("utf-8")
     linhas = [l for l in txt.splitlines() if l.strip()]
     hdr = [h.strip().lower() for h in linhas[0].split(",")]
     iI = next((i for i, h in enumerate(hdr) if h.startswith("ibge")), 0)
     iM = next((i for i, h in enumerate(hdr) if h.startswith("municipio")), 1)
-    out = []
+    vistos = {}
     for l in linhas[1:]:
         c = l.split(",")
         ibge = c[iI].strip()[:6] if iI < len(c) else ""
         nome = c[iM].strip() if iM < len(c) else ""
-        if ibge:
-            out.append((ibge, nome))
-    return out
+        if ibge and ibge not in vistos:
+            vistos[ibge] = nome
+    return list(vistos.items())
 
 
 def main():
