@@ -52,7 +52,7 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "💰💰💰 PAGAMENTO CONFIRMADO — Raio-X SUS 💰💰💰"
           to: gersongomes@brain27.com.br, fs@brain27.com.br
-          bcc: g3.healthservice@proton.me, g3.representante@gmail.com
+          bcc: g3.healthservice@proton.me, gerson.gomes@proton.me, g3.representante@gmail.com
           from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
           body: file://alerta_email_pagamento.txt
 
@@ -67,7 +67,7 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "[Raio-X SUS] Novas movimentações de custeio MAC/PAP"
           to: gersongomes@brain27.com.br, fs@brain27.com.br
-          bcc: g3.healthservice@proton.me, g3.representante@gmail.com
+          bcc: g3.healthservice@proton.me, gerson.gomes@proton.me, g3.representante@gmail.com
           from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
           body: file://alerta_email.txt
 
