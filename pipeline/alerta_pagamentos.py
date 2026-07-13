@@ -161,6 +161,16 @@ def main():
         if liberado and not liberado_alertado:
             novo["liberado_alertado"] = True
             liberacoes_novas.append({"lead": lead, "det": det})
+            # marca visualmente o lead na planilha (colunas liberado_em/nu_portaria;
+            # aba EXTRA-TETO destaca em âmbar) — requer Apps Script v9+
+            sit = det.get("situacao") or {}
+            _registrar_pagamento_sheet({
+                "token": "g3ctrl2026", "action": "registrarLiberacao",
+                "nu_proposta": nu, "ibge": lead["ibge"],
+                "liberado_em": _epoch_br(sit.get("dataSituacaoProjeto")),
+                "nu_portaria": str(det.get("nuPortaria") or ""),
+                "data_portaria": _epoch_br(det.get("dtPortaria")),
+            })
         if pago > 0 and not pago_alertado:
             novo["pago_alertado"] = True
             pagamentos_novos.append({"lead": lead, "det": det})
