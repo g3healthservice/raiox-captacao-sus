@@ -31,6 +31,7 @@ CTRL_URL = ("https://docs.google.com/spreadsheets/d/e/2PACX-1vTMcZpgiHbci8FynfSa
 BASE = Path(__file__).parent
 ESTADO = BASE / "estado_pagamentos.json"
 EMAIL_PAGAMENTO = BASE / "alerta_email_pagamento.txt"
+EMAIL_LIBERACAO = BASE / "alerta_email_liberacao.txt"  # situação 67 (portaria publicada)
 EMAIL = BASE / "alerta_email.txt"  # trilha antiga (movimentações) — mantida vazia por ora
 _savef = BASE / "ctrl_save_url.txt"
 CTRL_SAVE_URL = _savef.read_text().strip() if _savef.exists() else ""
@@ -96,13 +97,49 @@ def _registrar_pagamento_sheet(payload):
         pass  # não bloqueia o alerta se a planilha falhar
 
 
+COD_LIBERADO = 67  # "LIBERADO PAGAMENTO FNS" (portaria publicada -> saiu de EM ANÁLISE)
+
+
+def _liberacao_email(liberacoes):
+    """Monta o corpo do e-mail de LIBERAÇÃO (situação 67, portaria publicada)."""
+    L = ["📋✅ LIBERADO PAGAMENTO FNS — Proposta(s) liberada(s) (portaria publicada) 📋✅", "",
+         "As propostas abaixo saíram de \"EM ANÁLISE\" para \"LIBERADO PAGAMENTO FNS\".",
+         "Portaria publicada = pagamento autorizado (a ordem bancária/pagamento vem em seguida).", ""]
+    for pn in liberacoes:
+        lead, det = pn["lead"], pn["det"]
+        sit = det.get("situacao") or {}
+        nu_portaria = det.get("nuPortaria") or ""
+        dt_portaria = _epoch_br(det.get("dtPortaria"))
+        dt_liberacao = _epoch_br(sit.get("dataSituacaoProjeto"))
+        tipo = det.get("coTipoProposta") or lead.get("tipo") or ""
+        municipio = det.get("noMunicipio") or lead.get("municipio") or ""
+        uf = det.get("sgUf") or lead.get("uf") or ""
+        valor = float(det.get("vlPagar") or 0) or float(det.get("vlPago") or 0)
+        L.append(f"📍 {municipio}/{uf} — {tipo} — Proposta {lead['nu']}")
+        if lead.get("responsavel"):
+            L.append(f"   Responsável (captador): {lead['responsavel']}")
+        L.append("   Situação: LIBERADO PAGAMENTO FNS")
+        if nu_portaria:
+            L.append(f"   Portaria nº {nu_portaria}" + (f" de {dt_portaria}" if dt_portaria else ""))
+        if dt_liberacao:
+            L.append(f"   Liberado em: {dt_liberacao}")
+        L.append(f"   Valor liberado (a pagar): {_reais(valor)}")
+        L.append(f"   🔗 https://consultafns.saude.gov.br/#/proposta/{lead['nu']}/detalhe")
+        L.append("")
+    L += ["⏭️ Próximo passo: aguardar a ordem bancária. Você receberá um novo alerta (💰) quando o valor for efetivamente pago.",
+          "", "Painel: https://g3healthservice.github.io/raiox-captacao-sus/",
+          "— Robô Raio-X SUS · G3 Health Service"]
+    return "\n".join(L)
+
+
 def main():
     leads = ler_controladoria()
     raw = json.loads(ESTADO.read_text()) if ESTADO.exists() else {}
     estado = {k: (v if isinstance(v, dict) else None) for k, v in raw.items()}
     primeira_vez = not ESTADO.exists()
 
-    pagamentos_novos = []  # [{lead, det}]
+    pagamentos_novos = []   # [{lead, det}] — vlPago > 0 (dinheiro pago)
+    liberacoes_novas = []   # [{lead, det}] — situação virou 67 (portaria publicada)
     for lead in leads:
         nu = lead["nu"]
         try:
@@ -112,17 +149,32 @@ def main():
         if not det or not det.get("nuProposta"):
             continue
         pago = float(det.get("vlPago") or 0)
-        antigo = estado.get(nu)
-        ja_alertado = bool(antigo and antigo.get("pago_alertado"))
+        cod = (det.get("situacao") or {}).get("codigoSituacaoProjeto")
+        liberado = (cod == COD_LIBERADO)
+        antigo = estado.get(nu) or {}
+        pago_alertado = bool(antigo.get("pago_alertado"))
+        liberado_alertado = bool(antigo.get("liberado_alertado"))
         if primeira_vez:
-            estado[nu] = {"pago": pago, "pago_alertado": pago > 0}
-        elif pago > 0 and not ja_alertado:
-            estado[nu] = {"pago": pago, "pago_alertado": True}
+            estado[nu] = {"pago": pago, "pago_alertado": pago > 0, "liberado_alertado": liberado}
+            continue
+        novo = {"pago": pago, "pago_alertado": pago_alertado, "liberado_alertado": liberado_alertado}
+        if liberado and not liberado_alertado:
+            novo["liberado_alertado"] = True
+            liberacoes_novas.append({"lead": lead, "det": det})
+        if pago > 0 and not pago_alertado:
+            novo["pago_alertado"] = True
             pagamentos_novos.append({"lead": lead, "det": det})
-        else:
-            estado[nu] = {"pago": pago, "pago_alertado": ja_alertado}
+        estado[nu] = novo
 
     ESTADO.write_text(json.dumps(estado, ensure_ascii=False, separators=(",", ":")))
+
+    if liberacoes_novas:
+        EMAIL_LIBERACAO.write_text(_liberacao_email(liberacoes_novas), encoding="utf-8")
+        print(f"TEM_LIBERACAO=1  ({len(liberacoes_novas)} proposta(s) LIBERADA(S) — portaria publicada)")
+    else:
+        if EMAIL_LIBERACAO.exists():
+            EMAIL_LIBERACAO.unlink()
+        print("TEM_LIBERACAO=0")
 
     if pagamentos_novos:
         L = ["💰💰💰 PAGAMENTO(S) CONFIRMADO(S) — Propostas EXTRA-TETO (G3) 💰💰💰", ""]

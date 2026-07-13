@@ -37,9 +37,11 @@ jobs:
           out=$(python3 alerta_pagamentos.py); echo "$out"
           if echo "$out" | grep -q "TEM_NOVOS=1"; then echo "novos=1" >> "$GITHUB_OUTPUT"; else echo "novos=0" >> "$GITHUB_OUTPUT"; fi
           if echo "$out" | grep -q "TEM_PAGAMENTO=1"; then echo "pagamento=1" >> "$GITHUB_OUTPUT"; else echo "pagamento=0" >> "$GITHUB_OUTPUT"; fi
+          if echo "$out" | grep -q "TEM_LIBERACAO=1"; then echo "liberacao=1" >> "$GITHUB_OUTPUT"; else echo "liberacao=0" >> "$GITHUB_OUTPUT"; fi
           cp -f ~/raiox/estado_pagamentos.json "$GITHUB_WORKSPACE/pipeline/estado_pagamentos.json"
           [ -f ~/raiox/alerta_email.txt ] && cp ~/raiox/alerta_email.txt "$GITHUB_WORKSPACE/alerta_email.txt" || true
           [ -f ~/raiox/alerta_email_pagamento.txt ] && cp ~/raiox/alerta_email_pagamento.txt "$GITHUB_WORKSPACE/alerta_email_pagamento.txt" || true
+          [ -f ~/raiox/alerta_email_liberacao.txt ] && cp ~/raiox/alerta_email_liberacao.txt "$GITHUB_WORKSPACE/alerta_email_liberacao.txt" || true
 
       - name: Enviar e-mail de PAGAMENTO (assunto chamativo — só se detectou pagamento)
         if: steps.det.outputs.pagamento == '1'
@@ -55,6 +57,21 @@ jobs:
           bcc: g3.healthservice@proton.me, gerson.gomes@proton.me, g3.representante@gmail.com
           from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
           body: file://alerta_email_pagamento.txt
+
+      - name: Enviar e-mail de LIBERAÇÃO (situação 67 — portaria publicada)
+        if: steps.det.outputs.liberacao == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "📋✅ LIBERADO PAGAMENTO FNS — proposta liberada (portaria publicada) — Raio-X SUS"
+          to: gersongomes@brain27.com.br, fs@brain27.com.br
+          bcc: g3.healthservice@proton.me, gerson.gomes@proton.me, g3.representante@gmail.com
+          from: Raio-X SUS G3 <${{ secrets.MAIL_USERNAME }}>
+          body: file://alerta_email_liberacao.txt
 
       - name: Enviar e-mail (só se houver novas movimentações)
         if: steps.det.outputs.novos == '1'
